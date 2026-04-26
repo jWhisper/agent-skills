@@ -1,201 +1,221 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+TASK_FILE="task.json"
+ARCHITECTURE_FILE="architecture.md"
+PROGRESS_FILE="progress.md"
+AGENT=auto
+TASKS_PER_RUN=50
+MAX_RUNS=8
+DELAY=3
+TASKS_PER_RUN_EXPLICIT=0
+MAX_RUNS_EXPLICIT=0
+DELAY_EXPLICIT=0
 
 usage() {
   cat <<'USAGE'
-Usage: run-automation.sh [--agent codex|claude|auto] [--task-file task.json] [--max-runs N] [--tasks-per-run N] [--delay SEC]
+run-automation.sh — repeatedly launch supervised coding sessions
 
-Run approved Work Loop tasks through repeated fresh agent sessions.
+Usage:
+  bash run-automation.sh [OPTIONS]
+
+Options:
+  --agent AGENT      claude|codex|auto (default: auto)
+  --task-file FILE   Task file to inspect (default: task.json)
+  --tasks-per-run N  Max tasks each session should try to finish (default: from task.json or 50)
+  --max-runs N       Maximum number of agent sessions (default: from task.json or 8)
+  --delay SEC        Seconds to wait between runs (default: from task.json or 3)
+  -h, --help         Show this help message
 USAGE
 }
 
-agent="auto"
-task_file="task.json"
-max_runs=""
-tasks_per_run=""
-delay=""
-
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    --agent) agent="${2:-}"; shift 2 ;;
-    --task-file) task_file="${2:-}"; shift 2 ;;
-    --max-runs) max_runs="${2:-}"; shift 2 ;;
-    --tasks-per-run) tasks_per_run="${2:-}"; shift 2 ;;
-    --delay) delay="${2:-}"; shift 2 ;;
-    -h|--help) usage; exit 0 ;;
-    *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
+log() {
+  local level="$1" message="$2"
+  local timestamp
+  timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+  echo "${timestamp} [${level}] ${message}" >> "$MAIN_LOG"
+  case "$level" in
+    INFO)     echo -e "${BLUE}[INFO]${NC} ${message}" ;;
+    SUCCESS)  echo -e "${GREEN}[OK]${NC} ${message}" ;;
+    WARNING)  echo -e "${YELLOW}[WARN]${NC} ${message}" ;;
+    ERROR)    echo -e "${RED}[ERROR]${NC} ${message}" ;;
+    PROGRESS) echo -e "${CYAN}[...]${NC} ${message}" ;;
   esac
-done
-
-case "$agent" in
-  auto|codex|claude) ;;
-  *) echo "Invalid --agent: $agent" >&2; exit 2 ;;
-esac
-
-if [ ! -f "$task_file" ]; then
-  echo "Task file not found: $task_file" >&2
-  exit 1
-fi
-
-has_jq_tasks() {
-  command -v jq >/dev/null 2>&1 && jq -e '.tasks | type == "array"' "$task_file" >/dev/null 2>&1
 }
 
 count_total() {
-  if has_jq_tasks; then
-    jq '.tasks | length' "$task_file"
-  else
-    grep -c '"passes"' "$task_file" 2>/dev/null || echo "0"
-  fi
+  jq '.tasks | length' "$TASK_FILE"
 }
 
 count_remaining() {
-  if has_jq_tasks; then
-    jq '[.tasks[] | select(.passes != true)] | length' "$task_file"
-  else
-    grep -Ec '"passes"[[:space:]]*:[[:space:]]*false' "$task_file" 2>/dev/null || echo "0"
-  fi
+  jq '[.tasks[] | select(.passes != true)] | length' "$TASK_FILE"
 }
 
-approval_status() {
-  if has_jq_tasks; then
-    jq -r '.approval.status // empty' "$task_file"
-  else
-    sed -n 's/.*"status"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$task_file" | head -n 1
-  fi
+has_execution_policy() {
+  jq -e 'has("execution")' "$TASK_FILE" >/dev/null 2>&1
 }
 
-read_number_key() {
-  local key="$1"
-  sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p" "$task_file" | head -n 1
+has_approved_plan() {
+  if jq -e 'has("approval")' "$TASK_FILE" >/dev/null 2>&1; then
+    jq -e '.approval.status == "approved"' "$TASK_FILE" >/dev/null 2>&1
+  else
+    return 0
+  fi
 }
 
 read_execution_number() {
-  local primary="$1"
-  local legacy="$2"
-  local value=""
-
-  if has_jq_tasks; then
-    value="$(jq -r --arg primary "$primary" --arg legacy "$legacy" '.execution[$primary] // .execution[$legacy] // empty' "$task_file")"
-  else
-    value="$(read_number_key "$primary")"
-    if [ -z "$value" ] && [ -n "$legacy" ]; then
-      value="$(read_number_key "$legacy")"
-    fi
-  fi
-
-  case "$value" in
-    ''|*[!0-9]*) return 1 ;;
-    *) printf '%s\n' "$value" ;;
-  esac
+  local jq_expr="$1"
+  has_execution_policy || return 1
+  local value
+  value=$(jq -r "${jq_expr} // empty" "$TASK_FILE")
+  case "$value" in ''|*[!0-9]*) return 1 ;; *) printf '%s\n' "$value" ;; esac
 }
 
-approval_status="$(approval_status)"
-if [ "$approval_status" != "approved" ]; then
-  echo "$task_file is not approved. Review architecture.md and task.json with the user first." >&2
-  exit 1
-fi
-
-total="$(count_total)"
-remaining="$(count_remaining)"
-
-if [ "$total" -eq 0 ]; then
-  echo "$task_file has no tasks. Populate concrete tasks before automation." >&2
-  exit 1
-fi
-
-if [ -z "$tasks_per_run" ]; then
-  tasks_per_run="$(read_execution_number "tasks_per_run" "default_tasks_per_run" || true)"
-  tasks_per_run="${tasks_per_run:-3}"
-fi
-if [ -z "$max_runs" ]; then
-  max_runs="$(read_execution_number "max_runs" "default_max_runs_after_approval" || true)"
-  max_runs="${max_runs:-8}"
-fi
-if [ -z "$delay" ]; then
-  delay="$(read_execution_number "delay_seconds" "default_delay_seconds" || true)"
-  delay="${delay:-3}"
-fi
-
-case "$tasks_per_run" in ''|*[!0-9]*|0) echo "--tasks-per-run must be a positive integer" >&2; exit 2 ;; esac
-case "$max_runs" in ''|*[!0-9]*|0) echo "--max-runs must be a positive integer" >&2; exit 2 ;; esac
-case "$delay" in ''|*[!0-9]*) echo "--delay must be a non-negative integer" >&2; exit 2 ;; esac
+load_execution_defaults() {
+  local value
+  [ "$TASKS_PER_RUN_EXPLICIT" -eq 1 ] || { value=$(read_execution_number '.execution.default_tasks_per_run') && TASKS_PER_RUN="$value"; } || true
+  [ "$MAX_RUNS_EXPLICIT" -eq 1 ] || { value=$(read_execution_number '.execution.default_max_runs_after_approval') && MAX_RUNS="$value"; } || true
+  [ "$DELAY_EXPLICIT" -eq 1 ] || { value=$(read_execution_number '.execution.default_delay_seconds') && DELAY="$value"; } || true
+}
 
 detect_agent() {
-  if command -v codex >/dev/null 2>&1; then
-    echo "codex"
-  elif command -v claude >/dev/null 2>&1; then
-    echo "claude"
-  else
-    echo ""
+  if command -v claude >/dev/null 2>&1; then echo "claude"
+  elif command -v codex >/dev/null 2>&1; then echo "codex"
+  else echo ""
   fi
 }
 
-if [ "$agent" = "auto" ]; then
-  agent="$(detect_agent)"
-  if [ -z "$agent" ]; then
-    echo "No supported agent CLI found. Install Codex or Claude Code, or pass --agent." >&2
-    exit 1
-  fi
-fi
+# --- CLI parsing ---
 
-mkdir -p automation-logs
-main_log="automation-logs/work-loop-$(date +%Y%m%d_%H%M%S).log"
-
-run_agent() {
-  local prompt
-  prompt="Use the repo Work Loop harness task execution workflow, not the initialization workflow. Read CLAUDE.md or AGENTS.md, architecture.md, task.json, and progress.md. Run ./init.sh before each task to check project-specific prerequisites. Work in continue mode for up to $tasks_per_run unblocked dependency-satisfied tasks. For each task: verify dependencies, implement only that task by completing its steps as implementation sub-steps, then run acceptance and verification checks. Complete the mandatory checkpoint before claiming success or moving on: update the exact task in task.json to passes true, append a task-complete entry in progress.md naming that task with verification evidence and counts for passed, failed_or_blocked, remaining, and total, re-read both files to confirm the updates, then commit one coherent task including implementation changes, task.json, and progress.md when possible. Do not commit before task.json and progress.md are updated. Do not launch run-automation.sh from inside this supervised run. Stop if blocked or if no unblocked tasks remain."
-
-  case "$agent" in
-    codex) codex exec -a never -s workspace-write "$prompt" ;;
-    claude) claude -p --dangerously-skip-permissions "$prompt" ;;
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --agent)        AGENT="$2"; shift 2 ;;
+    --task-file)    TASK_FILE="$2"; shift 2 ;;
+    --tasks-per-run) TASKS_PER_RUN="$2"; TASKS_PER_RUN_EXPLICIT=1; shift 2 ;;
+    --max-runs)     MAX_RUNS="$2"; MAX_RUNS_EXPLICIT=1; shift 2 ;;
+    --delay)        DELAY="$2"; DELAY_EXPLICIT=1; shift 2 ;;
+    -h|--help)      usage; exit 0 ;;
+    *)              echo "Unknown option: $1" >&2; exit 1 ;;
   esac
-}
-
-echo "Work Loop automation"
-echo "Agent: $agent"
-echo "Task file: $task_file"
-echo "Tasks per run: $tasks_per_run"
-echo "Max runs: $max_runs"
-echo "Initial progress: $((total - remaining))/$total passing"
-echo "Log: $main_log"
-
-for run in $(seq 1 "$max_runs"); do
-  before="$(count_remaining)"
-  if [ "$before" -eq 0 ]; then
-    echo "All tasks complete." | tee -a "$main_log"
-    exit 0
-  fi
-
-  echo "Run $run/$max_runs: $before task(s) remaining" | tee -a "$main_log"
-  run_log="automation-logs/run-${run}-$(date +%Y%m%d_%H%M%S).log"
-
-  set +e
-  run_agent > >(tee "$run_log") 2>&1
-  exit_code=$?
-  set -e
-
-  after="$(count_remaining)"
-  completed=$((before - after))
-
-  echo "Run $run exit code: $exit_code" | tee -a "$main_log"
-  echo "Completed this run: $completed" | tee -a "$main_log"
-  echo "Remaining: $after" | tee -a "$main_log"
-
-  if [ "$completed" -le 0 ]; then
-    echo "Stopping: no progress in this run. Review $run_log." | tee -a "$main_log"
-    exit 1
-  fi
-
-  if [ "$after" -eq 0 ]; then
-    echo "All tasks complete." | tee -a "$main_log"
-    exit 0
-  fi
-
-  if [ "$run" -lt "$max_runs" ]; then
-    sleep "$delay"
-  fi
 done
 
-echo "Stopped after max runs." | tee -a "$main_log"
+# --- pre-flight checks ---
+
+[ ! -f "$TASK_FILE" ] && { echo "Task file not found: $TASK_FILE" >&2; exit 1; }
+! has_approved_plan && { echo "Plan not approved. Review $TASK_FILE with the user first." >&2; exit 1; }
+
+load_execution_defaults
+
+case "$TASKS_PER_RUN" in ''|*[!0-9]*|0) echo "--tasks-per-run must be a positive integer" >&2; exit 1 ;; esac
+case "$MAX_RUNS" in ''|*[!0-9]*|0) echo "--max-runs must be a positive integer" >&2; exit 1 ;; esac
+case "$DELAY" in ''|*[!0-9]*) echo "--delay must be a non-negative integer" >&2; exit 1 ;; esac
+
+if [ "$AGENT" = "auto" ]; then
+  AGENT=$(detect_agent)
+  [ -z "$AGENT" ] && { echo "No supported agent CLI found. Install Claude Code or Codex." >&2; exit 1; }
+fi
+
+[ "$(count_total)" -eq 0 ] && { echo "Backlog is empty. Populate $TASK_FILE before starting." >&2; exit 1; }
+
+LOG_DIR="./automation-logs"
+mkdir -p "$LOG_DIR"
+MAIN_LOG="$LOG_DIR/automation-$(date +%Y%m%d_%H%M%S).log"
+
+# --- agent runners ---
+
+run_claude() {
+  local prompt_file
+  prompt_file=$(mktemp)
+  cat > "$prompt_file" <<PROMPT
+Follow the workflow in CLAUDE.md for one supervised continuous-batch session.
+
+- Read $ARCHITECTURE_FILE and $TASK_FILE before making changes
+- This session is already supervised by ./run-automation.sh; do not launch it again
+- Finish up to $TASKS_PER_RUN tasks in this session
+- Run init.sh before coding and re-check regressions before each new task
+- Keep one task per commit, but do not stop after the first completed task
+- After each completed task, update the task file and progress log, commit, then continue
+- Stop early if blocked, if regressions fail, or if the backlog is empty
+PROMPT
+
+  set +e
+  claude -p \
+    --dangerously-skip-permissions \
+    --allowed-tools "Bash Edit Read Write Glob Grep Task WebSearch WebFetch mcp__playwright__*" \
+    < "$prompt_file"
+  local exit_code=$?
+  set -e
+  rm -f "$prompt_file"
+  return "$exit_code"
+}
+
+run_codex() {
+  codex exec -a never -s workspace-write \
+    "Follow AGENTS.md for one supervised continuous-batch session. Read $ARCHITECTURE_FILE and $TASK_FILE, do not launch ./run-automation.sh again because this session is already supervised, finish up to $TASKS_PER_RUN verified tasks, keep one task per commit, update the task file and progress log after each task, stop early if blocked or if regressions fail or if the backlog is empty."
+}
+
+# --- main loop ---
+
+initial_remaining=$(count_remaining)
+
+echo ""
+echo "========================================"
+echo "  Work Loop — Automation"
+echo "========================================"
+echo ""
+
+log "INFO" "Agent: $AGENT"
+log "INFO" "Max runs: $MAX_RUNS"
+log "INFO" "Task file: $TASK_FILE"
+log "INFO" "Tasks per run: $TASKS_PER_RUN"
+log "INFO" "Progress: $(( $(count_total) - initial_remaining ))/$(count_total) passing"
+log "INFO" "Log: $MAIN_LOG"
+
+for ((run = 1; run <= MAX_RUNS; run++)); do
+  remaining_before=$(count_remaining)
+  [ "$remaining_before" -eq 0 ] && { log "SUCCESS" "All tasks already pass."; exit 0; }
+
+  log "PROGRESS" "Run $run of $MAX_RUNS — $remaining_before task(s) remaining"
+  run_log="$LOG_DIR/run-${run}-$(date +%Y%m%d_%H%M%S).log"
+  run_start=$(date +%s)
+
+  set +e
+  case "$AGENT" in
+    claude) run_claude > >(tee "$run_log") 2>&1 ;;
+    codex)  run_codex > >(tee "$run_log") 2>&1 ;;
+    *)      echo "Unsupported agent: $AGENT" >&2; exit 1 ;;
+  esac
+  agent_exit=$?
+  set -e
+
+  remaining_after=$(count_remaining)
+  run_end=$(date +%s)
+  completed_this_run=$((remaining_before - remaining_after))
+
+  if [ "$agent_exit" -eq 0 ]; then
+    log "SUCCESS" "Run $run finished in $((run_end - run_start))s"
+  else
+    log "WARNING" "Run $run exited with code $agent_exit after $((run_end - run_start))s"
+  fi
+
+  [ "$completed_this_run" -gt 0 ] && log "SUCCESS" "Tasks completed: $completed_this_run"
+  log "INFO" "Progress: $(( $(count_total) - remaining_after ))/$(count_total) passing"
+
+  if [ "$remaining_after" -eq "$remaining_before" ]; then
+    log "WARNING" "No progress in run $run. Stop and inspect the repo."
+    exit 1
+  fi
+
+  [ "$remaining_after" -eq 0 ] && { log "SUCCESS" "All tasks completed."; exit 0; }
+  [ "$run" -lt "$MAX_RUNS" ] && { log "INFO" "Waiting ${DELAY}s..."; sleep "$DELAY"; }
+done
+
+log "WARNING" "Reached max runs with $(count_remaining) task(s) remaining."
 exit 0

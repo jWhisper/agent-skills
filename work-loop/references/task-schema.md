@@ -8,17 +8,18 @@ harder to casually rewrite than prose.
 ```json
 {
   "project": "Project name",
-  "goal": "One paragraph describing the requested outcome",
+  "spec": "One paragraph describing the requested outcome",
   "approval": {
-    "status": "pending",
+    "status": "needs-user-approval",
     "approved_by": null,
     "approved_at": null
   },
   "execution": {
-    "default_mode_after_approval": "continue",
-    "tasks_per_run": 50,
-    "max_runs": 8,
-    "delay_seconds": 3
+    "bare_approval_starts_execution": true,
+    "default_mode_after_approval": "continuous-batch",
+    "default_tasks_per_run": 50,
+    "default_max_runs_after_approval": 8,
+    "default_delay_seconds": 3
   },
   "tasks": [
     {
@@ -53,10 +54,14 @@ harder to casually rewrite than prose.
 
 ## Execution Fields
 
-- `default_mode_after_approval`: `checkpoint`, `continue`, or `automation`.
-- `tasks_per_run`: max tasks to complete in one continue/automation run.
-- `max_runs`: max outer-loop sessions for automation mode.
-- `delay_seconds`: pause between automation runs.
+- `bare_approval_starts_execution`: if `true`, a bare approval reply
+  automatically starts the default execution mode.
+- `default_mode_after_approval`: `checkpoint`, `continuous-batch`, or
+  `automation-loop`.
+- `default_tasks_per_run`: max tasks to complete in one continuous-batch run.
+- `default_max_runs_after_approval`: max outer-loop sessions for
+  automation-loop mode.
+- `default_delay_seconds`: pause between automation runs.
 
 ## Invariants
 

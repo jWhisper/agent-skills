@@ -52,15 +52,18 @@ If a regression is found:
 
 ## Step 4: Select The Next Task
 
-Choose the lowest numeric task where:
+Read task.json and select the next task where `passes: false` and all
+`depends_on` are `true`.
 
-- `passes` is not `true`
-- every numeric ID in `depends_on` points to a task with `passes: true`
+Selection criteria (in priority order):
 
-Do not start a task with unfinished dependencies. If no incomplete task is
-unblocked, write a blocker entry to `progress.md` and stop.
+1. Dependencies first — if Task B depends on Task A, do A first
+2. Foundation before features — infrastructure, data models, and core APIs before UI
+3. Lowest ID first among equals — when no dependency exists, follow task ID order
+4. Regressions before new work — if a previously-passing task broke, fix it first
 
-Announce the selected task ID/title before implementation.
+Announce which task you are working on. In Continuous Batch mode, repeat this
+selection step after each successful commit.
 
 ## Step 5: Implement Only That Task
 
@@ -103,10 +106,11 @@ Only after all verification passes, set the selected task's `passes` to `true`.
 
 Rules:
 
-- update only the selected task's `passes`
+- change ONLY the `"passes": false` to `"passes": true` for the selected task — nothing else
+- do not rewrite, reorder, or reformat any part of task.json
+- do not add, remove, or modify any task field other than `passes`
 - do not add task-level `status`
-- do not remove tasks
-- do not rewrite approved task text unless the user reopens planning
+- use the smallest possible edit (e.g. sed or Edit tool replacing only `false` with `true` on that line)
 
 ## Step 8: Update progress.md
 
@@ -151,9 +155,9 @@ The selected task is not complete until:
 - the progress entry includes verification evidence or a clear reason a check
   was not applicable
 
-Do not report success, start another task, or exit checkpoint/continue mode
-until this checkpoint is complete. If either file cannot be updated, leave the
-task as `passes: false`, write a `blocker` entry, and stop.
+Do not report success, start another task, or exit until this checkpoint is
+complete. If either file cannot be updated, leave the task as `passes: false`,
+write a `blocker` entry, and stop.
 
 ## Step 10: Commit
 
@@ -171,13 +175,16 @@ work, and do not commit before task status and progress are updated.
 ## Step 11: Decide Whether To Continue
 
 - `checkpoint`: stop after one completed checkpoint and report the result.
-- `continue`: loop back to Step 2 for the next unblocked task until all tasks
-  pass, the task budget is reached, verification fails, or a blocker appears.
-- `automation`: use `./run-automation.sh`; do not recursively launch automation
-  from inside an already supervised automation run.
+  Never use as the result of a bare approval reply.
+- `continuous-batch`: loop back to Step 2 for the next unblocked task until all
+  tasks pass, the task budget is reached, verification fails, or a blocker
+  appears. Do NOT stop after the first task.
+- `automation-loop`: use `./run-automation.sh`; do not recursively launch
+  automation from inside an already supervised automation run.
 
-A bare approval reply should use `task.json.execution.default_mode_after_approval`
-unless the user gives a narrower instruction.
+A bare approval reply should use
+`task.json.execution.default_mode_after_approval` unless the user gives a
+narrower instruction.
 
 ## Handling Blockers
 

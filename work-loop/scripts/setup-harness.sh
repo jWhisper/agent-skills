@@ -1,641 +1,419 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+PROJECT_NAME=""
+PROJECT_SPEC=""
+PLATFORM="all"
+TARGET_DIR="."
+ARCHITECTURE_FILE="architecture.md"
+TASK_FILE="task.json"
+PROGRESS_FILE="progress.md"
+FORCE=0
+TASKS_PER_RUN=50
+
 usage() {
-  cat <<'USAGE'
-Usage: setup-harness.sh [--force] [--dir DIR] [--name NAME] [--platform claude|codex|all] [DIR]
+    cat <<'EOF'
+setup-harness.sh — scaffold the work-loop project harness
 
-Create the Work Loop harness files in a target project.
-Existing files are skipped unless --force is provided.
-USAGE
-}
+Usage:
+  bash setup-harness.sh [OPTIONS]
 
-force="no"
-target_dir=""
-project_name=""
-platform="all"
-
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    --force)
-      force="yes"
-      shift
-      ;;
-    --dir)
-      target_dir="${2:-}"
-      shift 2
-      ;;
-    --name)
-      project_name="${2:-}"
-      shift 2
-      ;;
-    --platform)
-      platform="${2:-}"
-      shift 2
-      ;;
-    -h|--help)
-      usage
-      exit 0
-      ;;
-    -*)
-      echo "Unknown argument: $1" >&2
-      usage >&2
-      exit 2
-      ;;
-    *)
-      if [ -n "$target_dir" ]; then
-        echo "Only one target directory is supported." >&2
-        exit 2
-      fi
-      target_dir="$1"
-      shift
-      ;;
-  esac
-done
-
-case "$platform" in
-  claude|codex|all) ;;
-  *)
-    echo "Invalid --platform: $platform" >&2
-    exit 2
-    ;;
-esac
-
-target_dir="${target_dir:-.}"
-mkdir -p "$target_dir"
-target_dir="$(cd "$target_dir" && pwd)"
-project_name="${project_name:-$(basename "$target_dir")}"
-
-json_string() {
-  local value="$1"
-  if command -v python3 >/dev/null 2>&1; then
-    python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$value"
-  elif command -v node >/dev/null 2>&1; then
-    node -e 'console.log(JSON.stringify(process.argv[1]))' "$value"
-  else
-    printf '"%s"' "$(printf '%s' "$value" | sed 's/\\/\\\\/g; s/"/\\"/g')"
-  fi
-}
-
-write_file() {
-  local path="$1"
-  local content="$2"
-
-  if [ -e "$path" ] && [ "$force" != "yes" ]; then
-    echo "Skipped existing $path"
-    return 1
-  fi
-
-  mkdir -p "$(dirname "$path")"
-  printf '%s\n' "$content" > "$path"
-  echo "Wrote $path"
-  return 0
-}
-
-architecture_content() {
-  cat <<EOF
-# $project_name Architecture
-
-## Goal
-
-Replace this placeholder with the user-visible goal and product scope.
-
-## Requirements
-
-- Capture concrete requirements from the user request or spec.
-
-## Current Repository Facts
-
-- Repository shape:
-- Existing stack:
-- Important commands:
-
-## Proposed Design
-
-- Modules and responsibilities:
-- Data model:
-- External integrations:
-- Error handling:
-
-## Verification Strategy
-
-- Automated checks:
-- Manual/browser checks:
-- Regression checks:
-
-## Risks And Assumptions
-
-- Assumption:
-- Open question:
-
-## Out Of Scope
-
-- List what should not be implemented in this plan.
+Options:
+  --name NAME             Project name (default: target directory name)
+  --spec SPEC             One-paragraph project summary
+  --platform PLATFORM     claude|codex|all (default: all)
+  --dir DIR               Target project directory (default: current directory)
+  --architecture-file FILE Architecture file name (default: architecture.md)
+  --task-file FILE        Task file name (default: task.json)
+  --progress-file FILE    Progress log name (default: progress.md)
+  --tasks-per-run N       Suggested batch size for automation prompts (default: 50)
+  --force                 Overwrite existing harness files
+  -h, --help              Show this help message
 EOF
 }
 
-task_content() {
-  local json_project
-  json_project="$(json_string "$project_name")"
-  cat <<EOF
+fail() { echo -e "${RED}Error:${NC} $*" >&2; exit 1; }
+info() { echo -e "${CYAN}[INFO]${NC} $*"; }
+success() { echo -e "${GREEN}[OK]${NC} $*"; }
+warn() { echo -e "${YELLOW}[SKIP]${NC} $*"; }
+
+require_value() {
+    local option="$1" value="${2:-}"
+    [ -n "$value" ] || fail "Missing value for ${option}"
+}
+
+json_escape() {
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c 'import json, sys; print(json.dumps(sys.argv[1]))' "$1"
+    else
+        printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+    fi
+}
+
+write_file() {
+    local path="$1" content="$2"
+    if [ -e "$path" ] && [ "$FORCE" -ne 1 ]; then
+        warn "$path already exists"
+        return
+    fi
+    printf '%s\n' "$content" > "$path"
+    success "Wrote $path"
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --name)            require_value "$1" "${2:-}"; PROJECT_NAME="$2"; shift 2 ;;
+        --spec)            require_value "$1" "${2:-}"; PROJECT_SPEC="$2"; shift 2 ;;
+        --platform)        require_value "$1" "${2:-}"; PLATFORM="$2"; shift 2 ;;
+        --dir)             require_value "$1" "${2:-}"; TARGET_DIR="$2"; shift 2 ;;
+        --architecture-file) require_value "$1" "${2:-}"; ARCHITECTURE_FILE="$2"; shift 2 ;;
+        --task-file)       require_value "$1" "${2:-}"; TASK_FILE="$2"; shift 2 ;;
+        --progress-file)   require_value "$1" "${2:-}"; PROGRESS_FILE="$2"; shift 2 ;;
+        --tasks-per-run)   require_value "$1" "${2:-}"; TASKS_PER_RUN="$2"; shift 2 ;;
+        --force)           FORCE=1; shift ;;
+        -h|--help)         usage; exit 0 ;;
+        *)                 fail "Unknown option: $1" ;;
+    esac
+done
+
+mkdir -p "$TARGET_DIR"
+cd "$TARGET_DIR"
+
+DEFAULT_NAME=$(basename "$(pwd)")
+if [ -z "$PROJECT_NAME" ]; then
+    if [ -t 0 ]; then
+        read -r -p "Project name [$DEFAULT_NAME]: " PROJECT_NAME
+        PROJECT_NAME="${PROJECT_NAME:-$DEFAULT_NAME}"
+    else
+        PROJECT_NAME="$DEFAULT_NAME"
+    fi
+fi
+
+if [ -z "$PROJECT_SPEC" ] && [ -t 0 ]; then
+    read -r -p "Project summary (optional): " PROJECT_SPEC
+fi
+
+case "$PLATFORM" in claude|codex|all) ;; *) fail "Unsupported --platform: $PLATFORM" ;; esac
+case "$TASKS_PER_RUN" in ''|*[!0-9]*) fail "--tasks-per-run must be a positive integer" ;; 0) fail "--tasks-per-run must be greater than 0" ;; esac
+
+TASK_JSON_PROJECT=$(json_escape "$PROJECT_NAME")
+TASK_JSON_SPEC=$(json_escape "$PROJECT_SPEC")
+
+# --- file content generators ---
+
+task_file_content() {
+    cat <<EOF
 {
-  "project": $json_project,
-  "goal": "Replace this with the concrete user request before asking for approval.",
+  "project": $TASK_JSON_PROJECT,
+  "spec": $TASK_JSON_SPEC,
   "approval": {
-    "status": "pending",
+    "status": "needs-user-approval",
     "approved_by": null,
     "approved_at": null
   },
   "execution": {
-    "default_mode_after_approval": "continue",
-    "tasks_per_run": 50,
-    "max_runs": 8,
-    "delay_seconds": 3
+    "bare_approval_starts_execution": true,
+    "default_mode_after_approval": "continuous-batch",
+    "default_tasks_per_run": $TASKS_PER_RUN,
+    "default_max_runs_after_approval": 8,
+    "default_delay_seconds": 3
   },
   "tasks": []
 }
 EOF
 }
 
-progress_content() {
-  cat <<'EOF'
-# Progress
+architecture_file_content() {
+    cat <<EOF
+# $PROJECT_NAME Architecture
 
-Fresh session startup:
-1. Read `CLAUDE.md` or `AGENTS.md`
-2. Read `architecture.md`
-3. Read `task.json`
-4. Read this file
-5. Run `./init.sh` only after the plan is approved and execution has begun
+## Product Summary
 
-## Current State
+- Replace this stub with the user-facing problem statement and the product goal.
 
-- Approval: pending
-- Mode: not started
-- Counts: passed 0, failed_or_blocked 0, remaining 0, total 0
-- Next task: planning required
+## Requirements Snapshot
 
-## Log
+- Capture the key functional requirements from the prompt or spec.
 
-### blocker - Task none: planning required
+## Proposed Stack
 
-#### Counts
-- passed: 0
-- failed_or_blocked: 0
-- remaining: 0
-- total: 0
+- List the chosen technologies and why they fit this project.
 
-#### Blocker
-- Task list is not populated and plan approval is pending.
+## System Design
 
-#### Partial Work
-- Created missing Work Loop harness files without overwriting existing files.
+- Describe the main modules, boundaries, data flow, and external integrations.
 
-#### Needed
-- Fill the architecture and task plan, list the task overview for the user, and wait for approval.
+## Delivery Plan
 
-#### Resume
-- Populate `architecture.md` and `task.json`; do not edit business code before approval.
+- Explain the implementation phases that informed the task breakdown.
+
+## Risks And Open Questions
+
+- Record assumptions, tradeoffs, and anything the user should confirm.
+
+## Out Of Scope
+
+- State what this version will not include.
 EOF
 }
 
-init_content() {
-  cat <<'EOF'
-#!/usr/bin/env bash
+progress_file_content() {
+    echo "# Progress"
+}
+
+init_file_content() {
+    cat <<EOF
+#!/bin/bash
 set -euo pipefail
 
-project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$project_root"
+PROJECT_ROOT=\$(cd "\$(dirname "\$0")" && pwd)
+cd "\$PROJECT_ROOT"
 
-echo "Work Loop init: $project_root"
+echo "Initializing $PROJECT_NAME..."
 
-require_command() {
-  local name="$1"
-  command -v "$name" >/dev/null 2>&1 || {
-    echo "Missing required command: $name" >&2
-    exit 1
-  }
-  echo "Found command: $name"
-}
-
-require_path() {
-  local path="$1"
-  if [ ! -e "$path" ]; then
-    echo "Missing required path: $path" >&2
-    exit 1
-  fi
-  echo "Found path: $path"
-}
-
-require_port() {
-  local port="$1"
-  if command -v lsof >/dev/null 2>&1; then
-    lsof -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1 || {
-      echo "Required service is not listening on port $port" >&2
-      exit 1
-    }
-  elif command -v nc >/dev/null 2>&1; then
-    nc -z 127.0.0.1 "$port" >/dev/null 2>&1 || {
-      echo "Required service is not listening on port $port" >&2
-      exit 1
-    }
-  else
-    echo "Cannot check port $port because neither lsof nor nc is available." >&2
-    exit 1
-  fi
-  echo "Service listening on port: $port"
-}
-
-check_url() {
-  local url="$1"
-  if command -v curl >/dev/null 2>&1; then
-    curl -fsS "$url" >/dev/null || {
-      echo "Required URL is not healthy: $url" >&2
-      exit 1
-    }
-    echo "URL healthy: $url"
-  else
-    echo "Cannot check URL $url because curl is not available." >&2
-    exit 1
-  fi
-}
-
-# Customize this file for the project after planning is approved.
-# Keep it idempotent and conservative:
-# - check only commands, files, ports, simulators, databases, or local services
-#   that this project actually needs
-# - do not install dependencies just because a manifest exists
-# - do not start generic dev servers unless this project explicitly requires it
-#
+# 1) Install dependencies for your stack. Keep this idempotent.
 # Examples:
-#   require_command xcodebuild
-#   require_path MyApp.xcworkspace
-#   require_command node
-#   require_port 3000
-#   check_url http://127.0.0.1:3000/health
+#   npm install
+#   pip install -r requirements.txt
 
-if [ -f package.json ]; then
-  echo "Detected package.json. Add project-specific Node checks if this repo needs them."
-fi
-if compgen -G "*.xcodeproj" >/dev/null || compgen -G "*.xcworkspace" >/dev/null; then
-  echo "Detected iOS/Xcode project. Add xcodebuild, simulator, workspace, or service checks if needed."
-fi
-if [ -f pyproject.toml ] || [ -f requirements.txt ]; then
-  echo "Detected Python project. Add project-specific Python environment checks if needed."
-fi
-if [ -f Cargo.toml ]; then
-  echo "Detected Rust project. Add project-specific cargo/toolchain checks if needed."
-fi
-if [ -f go.mod ]; then
-  echo "Detected Go project. Add project-specific Go/toolchain checks if needed."
-fi
+# 2) Start long-lived services only if they are not already running.
+# Example:
+#   if ! lsof -ti:3000 >/dev/null 2>&1; then
+#     npm run dev > .work-loop.dev.log 2>&1 &
+#   fi
 
-echo "Work Loop init complete."
+# 3) Wait for readiness and print the URLs that future sessions should use.
+# Example:
+#   echo "App ready at http://127.0.0.1:3000"
+
+echo "Customize init.sh for your stack, then rerun before coding."
 EOF
 }
 
-automation_content() {
-  cat <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
+instruction_file_content() {
+    local instruction_name="$1"
+    cat <<EOF
+# $PROJECT_NAME — Agent Workflow
 
-usage() {
-  cat <<'USAGE'
-Usage: run-automation.sh [--agent codex|claude|auto] [--task-file task.json] [--max-runs N] [--tasks-per-run N] [--delay SEC]
+This repository uses a long-running harness. The backlog is the source of truth
+after the plan is approved.
 
-Run approved Work Loop tasks through repeated fresh agent sessions.
-USAGE
-}
+## Source Of Truth Files
 
-agent="auto"
-task_file="task.json"
-max_runs=""
-tasks_per_run=""
-delay=""
+- \`$ARCHITECTURE_FILE\` — approved system design and scope boundaries
+- \`$TASK_FILE\` — ordered backlog with immutable task definitions
+- \`$PROGRESS_FILE\` — cross-session handoff log
+- \`init.sh\` — idempotent environment bootstrap
 
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    --agent) agent="${2:-}"; shift 2 ;;
-    --task-file) task_file="${2:-}"; shift 2 ;;
-    --max-runs) max_runs="${2:-}"; shift 2 ;;
-    --tasks-per-run) tasks_per_run="${2:-}"; shift 2 ;;
-    --delay) delay="${2:-}"; shift 2 ;;
-    -h|--help) usage; exit 0 ;;
-    *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
-  esac
-done
+## Planning Gate
 
-case "$agent" in
-  auto|codex|claude) ;;
-  *) echo "Invalid --agent: $agent" >&2; exit 2 ;;
-esac
+Before any product implementation:
 
-if [ ! -f "$task_file" ]; then
-  echo "Task file not found: $task_file" >&2
-  exit 1
-fi
+1. Read the user prompt or requirements document
+2. Write or update \`$ARCHITECTURE_FILE\`
+3. Write or update \`$TASK_FILE\` with dependency-ordered tasks
+4. Keep \`approval.status\` as \`needs-user-approval\` until the user explicitly approves
+5. Summarize the plan and ask the user whether it is reasonable
+6. Stop after asking for approval; do not implement product code yet
 
-has_jq_tasks() {
-  command -v jq >/dev/null 2>&1 && jq -e '.tasks | type == "array"' "$task_file" >/dev/null 2>&1
-}
+If the user asks for revisions, update the planning files and ask again.
+Only after the user explicitly approves the plan should you set
+\`approval.status\` to \`approved\`, record that approval in \`$PROGRESS_FILE\`,
+and enter a coding mode.
 
-count_total() {
-  if has_jq_tasks; then
-    jq '.tasks | length' "$task_file"
-  else
-    grep -c '"passes"' "$task_file" 2>/dev/null || echo "0"
-  fi
-}
+If the user's approval reply is bare approval text with no narrower execution
+instruction, such as \`approve\`, \`approved\`, \`looks good\`, \`go ahead\`,
+\`可以\`, \`同意\`, \`开始\`, or \`继续\`, treat that as:
 
-count_remaining() {
-  if has_jq_tasks; then
-    jq '[.tasks[] | select(.passes != true)] | length' "$task_file"
-  else
-    grep -Ec '"passes"[[:space:]]*:[[:space:]]*false' "$task_file" 2>/dev/null || echo "0"
-  fi
-}
+1. Approval to record in \`$TASK_FILE\`
+2. Authorization to start the default post-approval execution policy from
+   \`execution.default_mode_after_approval\`
+3. Permission to spend up to \`execution.default_tasks_per_run\` tasks in that
+   first session, or up to \`execution.default_max_runs_after_approval\`
+   supervised sessions if the default mode is \`automation-loop\`
 
-approval_status() {
-  if has_jq_tasks; then
-    jq -r '.approval.status // empty' "$task_file"
-  else
-    sed -n 's/.*"status"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$task_file" | head -n 1
-  fi
-}
+## Three Execution Modes
 
-read_number_key() {
-  local key="$1"
-  sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p" "$task_file" | head -n 1
-}
+### Mode A — Checkpoint
 
-read_execution_number() {
-  local primary="$1"
-  local legacy="$2"
-  local value=""
+Use this **only** when the user's prompt explicitly asks for a single task.
+**Never** use checkpoint as the result of a bare approval reply.
 
-  if has_jq_tasks; then
-    value="$(jq -r --arg primary "$primary" --arg legacy "$legacy" '.execution[$primary] // .execution[$legacy] // empty' "$task_file")"
-  else
-    value="$(read_number_key "$primary")"
-    if [ -z "$value" ] && [ -n "$legacy" ]; then
-      value="$(read_number_key "$legacy")"
-    fi
-  fi
+- Complete exactly one verified task
+- Make exactly one task commit
+- Stop and report cleanly
 
-  case "$value" in
-    ''|*[!0-9]*) return 1 ;;
-    *) printf '%s\n' "$value" ;;
-  esac
-}
+### Mode B — Continuous Batch (default after bare approval)
 
-approval_status="$(approval_status)"
-if [ "$approval_status" != "approved" ]; then
-  echo "$task_file is not approved. Review architecture.md and task.json with the user first." >&2
-  exit 1
-fi
+Enter this mode when a bare approval triggers \`continuous-batch\`, or when the
+prompt explicitly asks to continue, keep going, run continuously, process the
+queue, work until blocked, or similar wording such as \`continuous\`, \`batch\`,
+\`keep going\`, \`continue until blocked\`, \`连续执行\`, \`继续跑\`, or
+\`一直做到卡住为止\`.
 
-total="$(count_total)"
-remaining="$(count_remaining)"
+In this mode:
 
-if [ "$total" -eq 0 ]; then
-  echo "$task_file has no tasks. Populate concrete tasks before automation." >&2
-  exit 1
-fi
+- Still keep one task per commit
+- After each completed task, **immediately** re-enter the loop for the next
+  incomplete task — do NOT stop after the first task
+- Stop only when you hit a blocker, fail regression checks, exhaust the
+  task budget from \`execution.default_tasks_per_run\`, or empty the backlog
 
-if [ -z "$tasks_per_run" ]; then
-  tasks_per_run="$(read_execution_number "tasks_per_run" "default_tasks_per_run" || true)"
-  tasks_per_run="${tasks_per_run:-3}"
-fi
-if [ -z "$max_runs" ]; then
-  max_runs="$(read_execution_number "max_runs" "default_max_runs_after_approval" || true)"
-  max_runs="${max_runs:-8}"
-fi
-if [ -z "$delay" ]; then
-  delay="$(read_execution_number "delay_seconds" "default_delay_seconds" || true)"
-  delay="${delay:-3}"
-fi
+### Mode C — Automation Loop
 
-case "$tasks_per_run" in ''|*[!0-9]*|0) echo "--tasks-per-run must be a positive integer" >&2; exit 2 ;; esac
-case "$max_runs" in ''|*[!0-9]*|0) echo "--max-runs must be a positive integer" >&2; exit 2 ;; esac
-case "$delay" in ''|*[!0-9]*) echo "--delay must be a non-negative integer" >&2; exit 2 ;; esac
+Use this when the current prompt explicitly asks for unattended looping, or
+when \`execution.default_mode_after_approval\` is \`automation-loop\`.
 
-detect_agent() {
-  if command -v codex >/dev/null 2>&1; then
-    echo "codex"
-  elif command -v claude >/dev/null 2>&1; then
-    echo "claude"
-  else
-    echo ""
-  fi
-}
+In this mode:
 
-if [ "$agent" = "auto" ]; then
-  agent="$(detect_agent)"
-  if [ -z "$agent" ]; then
-    echo "No supported agent CLI found. Install Codex or Claude Code, or pass --agent." >&2
-    exit 1
-  fi
-fi
+- Record plan approval if it was just granted
+- Launch \`./run-automation.sh\` with the configured defaults unless the user
+  supplied narrower limits
+- Let the supervisor loop own subsequent sessions
+- Do not manually continue coding tasks in the current interactive session after
+  the supervisor is launched
 
-mkdir -p automation-logs
-main_log="automation-logs/work-loop-$(date +%Y%m%d_%H%M%S).log"
+## Mode Selection
 
-run_agent() {
-  local prompt
-  prompt="Use the repo Work Loop harness task execution workflow, not the initialization workflow. Read CLAUDE.md or AGENTS.md, architecture.md, task.json, and progress.md. Run ./init.sh before each task to check project-specific prerequisites. Work in continue mode for up to $tasks_per_run unblocked dependency-satisfied tasks. For each task: verify dependencies, implement only that task by completing its steps as implementation sub-steps, then run acceptance and verification checks. Complete the mandatory checkpoint before claiming success or moving on: update the exact task in task.json to passes true, append a task-complete entry in progress.md naming that task with verification evidence and counts for passed, failed_or_blocked, remaining, and total, re-read both files to confirm the updates, then commit one coherent task including implementation changes, task.json, and progress.md when possible. Do not commit before task.json and progress.md are updated. Do not launch run-automation.sh from inside this supervised run. Stop if blocked or if no unblocked tasks remain."
+1. Read \`$ARCHITECTURE_FILE\`, \`$TASK_FILE\`, and \`$PROGRESS_FILE\`.
+2. If the architecture is missing, the task array is empty, or the plan is not
+   approved, switch to Planning Gate mode.
+3. If the latest user reply is a bare approval and
+   \`execution.bare_approval_starts_execution\` is true, follow
+   \`execution.default_mode_after_approval\`.
+4. Otherwise choose Checkpoint, Continuous Batch, or Automation Loop from the
+   current prompt.
 
-  case "$agent" in
-    codex) codex exec -a never -s workspace-write "$prompt" ;;
-    claude) claude -p --dangerously-skip-permissions "$prompt" ;;
-  esac
-}
+## Task Loop
 
-echo "Work Loop automation"
-echo "Agent: $agent"
-echo "Task file: $task_file"
-echo "Tasks per run: $tasks_per_run"
-echo "Max runs: $max_runs"
-echo "Initial progress: $((total - remaining))/$total passing"
-echo "Log: $main_log"
+Repeat this loop once in Checkpoint mode, or **repeatedly** in Continuous Batch
+mode (keep looping back after each commit until budget or blocker):
 
-for run in $(seq 1 "$max_runs"); do
-  before="$(count_remaining)"
-  if [ "$before" -eq 0 ]; then
-    echo "All tasks complete." | tee -a "$main_log"
-    exit 0
-  fi
+### Phase 1 — Prepare and Implement
 
-  echo "Run $run/$max_runs: $before task(s) remaining" | tee -a "$main_log"
-  run_log="automation-logs/run-${run}-$(date +%Y%m%d_%H%M%S).log"
+1. Read \`$ARCHITECTURE_FILE\`, \`$PROGRESS_FILE\`, \`git log --oneline -20\`, and \`$TASK_FILE\`
+2. Run \`./init.sh\`
+3. Verify one or two previously passing flows still work
+4. Pick the first task where \`passes: false\` and all \`depends_on\` are \`true\`
+5. Implement only that task
+6. Test thoroughly
 
-  set +e
-  run_agent > >(tee "$run_log") 2>&1
-  exit_code=$?
-  set -e
+### Phase 2 — Record and Commit (MANDATORY, do not skip)
 
-  after="$(count_remaining)"
-  completed=$((before - after))
+After Phase 1, you MUST complete ALL of the following steps before reporting
+success or starting the next task. Skipping any of these steps means the task
+is not complete.
 
-  echo "Run $run exit code: $exit_code" | tee -a "$main_log"
-  echo "Completed this run: $completed" | tee -a "$main_log"
-  echo "Remaining: $after" | tee -a "$main_log"
+1. **Update \`$TASK_FILE\`**: change ONLY \`"passes": false\` to \`"passes": true\`
+   for the completed task. Do not rewrite, reorder, or reformat anything else.
+2. **Update \`$PROGRESS_FILE\`**: append a session entry with the task title,
+   what was done, how it was tested, and current counts (passed/remaining/total).
+3. **Verify the checkpoint**: re-read both files and confirm the task shows
+   \`"passes": true\` and progress has the matching entry.
+4. **Commit**: \`git add\` the implementation files, \`$TASK_FILE\`, and
+   \`$PROGRESS_FILE\`, then commit with a descriptive message.
 
-  if [ "$completed" -le 0 ]; then
-    echo "Stopping: no progress in this run. Review $run_log." | tee -a "$main_log"
-    exit 1
-  fi
+### If Blocked
 
-  if [ "$after" -eq 0 ]; then
-    echo "All tasks complete." | tee -a "$main_log"
-    exit 0
-  fi
-
-  if [ "$run" -lt "$max_runs" ]; then
-    sleep "$delay"
-  fi
-done
-
-echo "Stopped after max runs." | tee -a "$main_log"
-exit 0
-EOF
-}
-
-instruction_content() {
-  local agent_name="$1"
-  cat <<EOF
-# $project_name Work Loop Instructions
-
-This repository uses a self-looping coding harness. The source of truth is:
-
-- \`architecture.md\`: design and scope
-- \`task.json\`: dependency-aware task list
-- \`progress.md\`: cross-session handoff
-- \`init.sh\`: idempotent project-specific prerequisite check
-
-## Workflow Split
-
-There are two separate workflows:
-
-1. **Harness initialization / planning**: create or repair harness files, tailor
-   \`init.sh\`, populate \`architecture.md\` and \`task.json\`, list the task
-   overview, and wait for approval. No product code changes happen here.
-2. **Task execution**: after approval, select one dependency-ready task,
-   implement it, verify it, update \`task.json\` and \`progress.md\`, then commit.
-
-## Startup
-
-At the start of every new conversation or automated run:
-
-1. Read this file
-2. Read \`architecture.md\`
-3. Read \`task.json\`
-4. Read \`progress.md\`
-5. Do not rely on prior chat context
-
-## Harness Initialization / Planning
-
-Before \`task.json.approval.status\` is \`approved\`:
-
-- You may inspect the repo and edit harness/planning files
-- You must populate \`architecture.md\` and \`task.json\` from the user's request
-- You may tailor \`init.sh\` as a conservative project-specific prerequisite check
-- Tasks must use \`passes\` as the only completion state; do not add task-level \`status\`
-- Tasks should include \`steps\` as concrete implementation sub-steps
-- Put completion criteria in \`acceptance\` and proof commands/manual checks in \`verification\`
-- You must list the task overview for the user
-- You must not edit business code, run \`./init.sh\`, install dependencies, start servers, run automation, or mark tasks passing
-
-When the user approves, record approval metadata in \`task.json\` and \`progress.md\`.
-
-\`init.sh\` is not the task workflow. It should only check this project's
-required commands, files, ports, simulators, services, or health URLs. Do not
-install dependencies or start generic services just because a manifest exists.
-
-## Task Execution Workflow
-
-Use this workflow only after approval.
-
-### Task Selection
-
-Select the lowest numeric task where \`passes\` is not \`true\` and every ID in
-\`depends_on\` already has \`passes: true\`. Never start a task with unfinished
-dependencies.
-
-### Per-Task Loop
-
-For each task:
-
-1. Run \`./init.sh\`
-2. Confirm the required tools/services for this project are available
-3. Regression-check previously passing work when any exists
-4. Implement only the selected task
-5. Complete every implementation sub-step in \`steps\`
-6. Verify every acceptance item and verification item
-7. Set only that task's \`passes\` to \`true\`
-8. Append \`progress.md\`
-9. Re-read \`task.json\` and \`progress.md\` to confirm both updates
-10. Commit one coherent task when git is available
+Stop immediately. Do NOT mark \`passes: true\`. Document the blocker in
+\`$PROGRESS_FILE\` and leave the repo buildable.
 
 ## Mandatory Completion Checkpoint
 
-A task is not complete until both of these are true:
+A task is NOT complete until BOTH of these are true:
 
-- The exact task in \`task.json\` has \`passes: true\`
-- \`progress.md\` has a new entry naming that task and recording verification evidence
+- \`$TASK_FILE\` has the exact task updated to \`"passes": true\`
+- \`$PROGRESS_FILE\` has a new entry naming that task with verification evidence and counts
 
-After updating both files, re-read them to confirm the checkpoint. Do not report
-success, stop checkpoint mode, or continue to another task until this checkpoint
-is complete. If either file cannot be updated, leave the task as \`passes: false\`,
-write a blocker entry in \`progress.md\`, and stop.
+Do NOT report success, start another task, or exit until this checkpoint is
+confirmed by re-reading both files. If either file cannot be updated, leave the
+task as \`passes: false\`, write a blocker entry, and stop.
 
-Commit only after the checkpoint is complete. A task commit must include the
-implementation changes, \`task.json\`, and \`progress.md\` together.
+## Testing Expectations
 
-\`progress.md\` uses only two entry types: \`task-complete\` and \`blocker\`.
-Every entry must include counts for passed, failed_or_blocked, remaining, and total.
+- Major UI work must be checked in a browser
+- All changes should pass the repo's lint, build, and relevant test commands
+- Do not mark a task complete until every step is verified
 
-## Modes
+## Non-Negotiable Rules
 
-- \`checkpoint\`: finish one task and stop
-- \`continue\`: keep looping through unblocked tasks until done, blocked, failed, or over budget
-- \`automation\`: launch \`./run-automation.sh\` after approval
+1. No implementation before plan approval
+2. One task per commit
+3. Regression check before each new task
+4. Never rewrite task titles, descriptions, or steps during normal coding
+5. Never keep a second backlog or progress file in parallel
+6. Leave the repo in a clean state for the next agent session or the next loop iteration
 
-If a bare approval reply gives no mode, use
-\`task.json.execution.default_mode_after_approval\`.
+## When Work Is Blocked
 
-## Stop Conditions
+If the task needs human input or an external dependency:
 
-Stop and write a blocker entry if verification fails, dependencies are blocked,
-credentials/tools are missing, or the repo cannot be left in a clean state.
+- Record what was completed in \`$PROGRESS_FILE\`
+- Describe the blocker clearly
+- Leave the repo building and runnable if possible
+- Do not mark the task complete
+- Do not commit a misleading "done" state
 
-Generated for $agent_name. Keep these instructions aligned with the harness files.
+## Platform Note
+
+This workflow was generated for $instruction_name. The process is the same across
+agents; only the surrounding CLI changes.
 EOF
 }
 
-echo "Setting up Work Loop harness in $target_dir"
+# --- write files ---
 
-write_file "$target_dir/architecture.md" "$(architecture_content)" || true
-write_file "$target_dir/task.json" "$(task_content)" || true
-write_file "$target_dir/progress.md" "$(progress_content)" || true
-if write_file "$target_dir/init.sh" "$(init_content)"; then
-  chmod +x "$target_dir/init.sh"
-fi
-if write_file "$target_dir/run-automation.sh" "$(automation_content)"; then
-  chmod +x "$target_dir/run-automation.sh"
+info "Setting up work-loop harness in $(pwd)"
+info "Architecture file: $ARCHITECTURE_FILE"
+info "Task file: $TASK_FILE"
+info "Progress file: $PROGRESS_FILE"
+info "Platform: $PLATFORM"
+info "Default tasks per session: $TASKS_PER_RUN"
+
+write_file "$ARCHITECTURE_FILE" "$(architecture_file_content)"
+write_file "$TASK_FILE" "$(task_file_content)"
+write_file "$PROGRESS_FILE" "$(progress_file_content)"
+write_file "init.sh" "$(init_file_content)"
+
+if [ ! -e "run-automation.sh" ] || [ "$FORCE" -eq 1 ]; then
+    cp "$script_dir/run-automation.sh" "run-automation.sh"
+    chmod +x run-automation.sh
+    success "Copied run-automation.sh"
+else
+    warn "run-automation.sh already exists"
 fi
 
-case "$platform" in
-  claude)
-    write_file "$target_dir/CLAUDE.md" "$(instruction_content "Claude Code")" || true
-    ;;
-  codex)
-    write_file "$target_dir/AGENTS.md" "$(instruction_content "Codex")" || true
-    ;;
-  all)
-    write_file "$target_dir/CLAUDE.md" "$(instruction_content "Claude Code")" || true
-    write_file "$target_dir/AGENTS.md" "$(instruction_content "Codex")" || true
-    ;;
+chmod +x init.sh 2>/dev/null || true
+
+write_claude() { write_file "CLAUDE.md" "$(instruction_file_content "Claude Code")"; }
+write_codex()  { write_file "AGENTS.md" "$(instruction_file_content "Codex")"; }
+
+case "$PLATFORM" in
+    claude) write_claude ;;
+    codex)  write_codex ;;
+    all)    write_claude; write_codex ;;
 esac
 
-echo "Work Loop harness setup complete."
-echo "Next: populate architecture.md and task.json from the user request, then ask for approval."
+if [ ! -d ".git" ]; then
+    git init -q
+    success "Initialized git repository"
+else
+    warn "Git repository already exists"
+fi
+
+echo ""
+echo -e "${GREEN}Harness scaffold complete.${NC}"
+echo "Next steps:"
+echo "  1. Replace the stub in $ARCHITECTURE_FILE with the real architecture"
+echo "  2. Populate $TASK_FILE from your product spec and keep approval pending"
+echo "  3. Ask the user to approve the architecture and task plan"
+echo "  4. After approval, customize init.sh for your stack and start coding"
+echo "  5. For repeated unattended runs, use ./run-automation.sh"

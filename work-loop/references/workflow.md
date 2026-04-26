@@ -13,7 +13,8 @@ implementation.
    - Allowed output is harness/planning files only.
 
 2. **Task execution**
-   - Use `references/task-workflow.md`.
+   - **Read `references/task-workflow.md` in full** before starting any task.
+     Do not proceed from memory.
    - Active only after `task.json.approval.status` is `approved` and at least
      one concrete task exists.
    - Product code changes happen only here.
@@ -46,11 +47,11 @@ Do not rely on prior chat context. The files are the memory.
 - Before approval, do not edit business code, run `./init.sh`, install
   dependencies, start servers, run automation, or mark tasks passing.
 - After approval, do not rewrite task text during normal execution; update only
-  approval metadata, `passes`, and handoff/progress entries.
+  approval metadata, `passes`, and progress entries.
 - `init.sh` belongs to initialization but is run by the task workflow. It must
   be a conservative project-specific prerequisite check, not a generic installer
   or server launcher.
 - Every completed task must update the selected task's `passes` and append a
-  matching `task-complete` entry before commit.
+  matching entry in `progress.md` before commit.
 - `progress.md` uses only `task-complete` and `blocker` entries. Each entry must
   include counts for passed, failed_or_blocked, remaining, and total tasks.

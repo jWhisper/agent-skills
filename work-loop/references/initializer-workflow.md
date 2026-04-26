@@ -82,6 +82,13 @@ Forbidden before approval:
 - mark any task `passes: true`
 - run `./run-automation.sh`
 
-When the user explicitly approves, set `task.json.approval.status` to
-`approved`, fill approval metadata when practical, append an approval entry to
-`progress.md`, then route to `task-workflow.md`.
+When the user explicitly approves (e.g. `approve`, `approved`, `looks good`,
+`go ahead`, `同意`, `可以`, `开始`, `继续执行`), set
+`task.json.approval.status` to `approved`, fill approval metadata when
+practical, append an approval entry to `progress.md`, then **read
+`references/task-workflow.md` in full** and follow its steps for task
+execution. Do not proceed from memory — read the file.
+
+If `execution.bare_approval_starts_execution` is `true`, a bare approval reply
+automatically starts the default mode from
+`execution.default_mode_after_approval` (typically `continuous-batch`).
