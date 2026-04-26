@@ -10,7 +10,7 @@
 4. 每轮先回归检查，再完成当前任务的 steps、acceptance、verification。
 5. 通过后更新状态、记录进度，并留下可恢复的 handoff。
 
-使用 skill 时，agent 应主动创建缺失的 Work Loop 文件，不需要用户先手动编写这些文件。每个编码会话开始时应运行 `./init.sh`：它默认会安装依赖、准备本地状态，并在项目有 `dev` script 时启动开发服务器。缺少密钥、外部账号、付费服务、端口不可用或安装失败时，agent 应记录阻塞并停止。
+使用 skill 时，agent 应主动创建缺失的 Work Loop 文件，不需要用户先手动编写这些文件。批准前，它只能读仓库、生成或修改 `architecture.md`、`task.json`、`progress.md`、`init.sh`、`AGENTS.md`、`CLAUDE.md` 等规划/编排文件，不能运行 `init.sh`、安装依赖、启动服务或写业务代码。批准后，每个编码会话开始时应运行 `./init.sh`：它默认会安装依赖、准备本地状态，并在项目有 `dev` script 时启动开发服务器。缺少密钥、外部账号、付费服务、端口不可用或安装失败时，agent 应记录阻塞并停止。
 
 ## 目录
 
@@ -120,13 +120,11 @@ bash work-loop/scripts/setup-harness.sh --force /path/to/project
     "approved_at": ""
   },
   "execution": {
-    "default_mode_after_approval": "continuous-batch",
-    "default_tasks_per_run": 3,
-    "default_max_runs_after_approval": 10
+    "default_mode_after_approval": "continuous"
   },
   "tasks": [
     {
-      "id": 1,
+      "id": "new-chat",
       "title": "New chat",
       "category": "functional",
       "description": "New chat button creates a fresh conversation",
@@ -152,9 +150,91 @@ bash work-loop/scripts/setup-harness.sh --force /path/to/project
 }
 ```
 
-`approval.status` 为 `pending` 时，只规划不实现。用户批准后再按 `execution.default_mode_after_approval` 推进任务。每个任务通过 `depends_on` 声明依赖关系，通过 `steps` 描述操作步骤，通过 `acceptance` 定义完成标准，通过 `verification` 定义必须执行的检查。
+`approval.status` 为 `pending` 时，只规划不实现。用户批准后再按 `execution.default_mode_after_approval` 推进任务。每个任务必须有唯一稳定的 `id`，推荐使用 `project-setup`、`timer-setup` 这种可读字符串，方便表达顺序、依赖、进度日志和提交信息。每个任务通过 `depends_on` 声明依赖关系，通过 `steps` 描述操作步骤，通过 `acceptance` 定义完成标准，通过 `verification` 定义必须执行的检查。
 
 任务选择规则是：只选择第一个 `passes: false` 且所有 `depends_on` 任务都已经 `passes: true` 的任务。这样 API、数据模型、认证、UI 等有依赖的任务不会乱序执行。
+
+## 执行模式
+
+`execution.default_mode_after_approval` 支持：
+
+- `checkpoint`：只完成一个未阻塞任务，然后更新进度并停止。
+- `continuous`：持续推进任务，直到全部完成、遇到阻塞、发现回归或达到任务预算。
+- `automation-loop`：交给 `run-automation.sh` 启动多轮新会话并写入日志。建议至少手动跑通一个任务后再使用。
+
+## 批准门
+
+`work-loop` 采用明确的批准门：
+
+1. 你描述需求。
+2. Agent 只生成或更新 `architecture.md`、`task.json`、`progress.md` 和项目指令文件。
+3. 你 review 计划。
+4. 你明确回复 `approve`、`go ahead`、`LGTM`、`批准` 或 `同意执行`。
+5. Agent 才把 `approval.status` 改成 `approved`，运行 `init.sh`，并进入逐任务执行循环。
+
+批准前禁止：
+
+- 运行 `./init.sh`
+- 安装依赖
+- 启动开发服务器
+- 修改业务代码
+- 执行 `task.json` 中的任务
+- 把任务标记为 `passes: true`
+- 运行 `run-automation.sh`
+
+批准后，任务定义默认冻结。正常执行时不要改 `id`、`title`、`description`、`depends_on`、`steps`、`acceptance`、`verification`，只更新 `passes` 和 `progress.md`。如果任务拆分本身错了，应先停下来重新规划。
+
+## 进度与阻塞记录
+
+完成任务后，在 `progress.md` 追加：
+
+```markdown
+## Session N - Task: task-id
+
+### What changed
+- Files or areas changed.
+
+### Steps
+- [x] Step that was completed.
+
+### Acceptance
+- [x] Acceptance result and evidence.
+
+### Verification
+- Command, manual check, screenshot, or reason a check was not applicable.
+
+### Issues
+- None, or the issue and how it was resolved.
+
+### Next
+- Next unblocked task, remaining blocker, or completion state.
+```
+
+遇到阻塞时，在 `progress.md` 追加：
+
+```markdown
+## Session N - BLOCKED: task-id
+
+### Blocker
+- Exact blocker and where it occurred.
+
+### What was completed
+- Any safe partial work that remains.
+
+### What is needed
+- Specific human action, credential, decision, or environment repair.
+
+### Resume instructions
+- What the next session should do after the blocker is resolved.
+```
+
+每轮结束前检查：
+
+- build/test 已运行，或无法运行的原因已记录
+- `task.json` 状态准确
+- `progress.md` 已写当前 session
+- 可提交时保持一个任务一个提交
+- 工作区干净，或剩余改动已说明
 
 ## 环境初始化逻辑
 

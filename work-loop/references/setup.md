@@ -28,13 +28,11 @@ Create a dependency-ordered task queue:
     "approved_at": ""
   },
   "execution": {
-    "default_mode_after_approval": "continuous-batch",
-    "default_tasks_per_run": 3,
-    "default_max_runs_after_approval": 10
+    "default_mode_after_approval": "continuous"
   },
   "tasks": [
     {
-      "id": 1,
+      "id": "new-chat",
       "title": "New chat",
       "category": "functional",
       "description": "New chat button creates a fresh conversation",
@@ -60,7 +58,7 @@ Create a dependency-ordered task queue:
 }
 ```
 
-Use `category` values such as `setup`, `functional`, `regression`, `refactor`, `test`, or `docs`. Use `depends_on` to list prerequisite task IDs, for example `"depends_on": [1, 2]`. Keep `approval.status` as `pending` until the user approves the plan.
+Use `id` as a required, unique, stable task identifier. Prefer readable string IDs such as `project-setup`, `timer-setup`, or `quiz-flow`. Use `category` values such as `setup`, `functional`, `regression`, `refactor`, `test`, or `docs`. Use `depends_on` to list prerequisite task IDs, for example `"depends_on": ["project-setup", "timer-setup"]`. Keep `approval.status` as `pending` until the user approves the plan.
 
 ### `progress.md`
 

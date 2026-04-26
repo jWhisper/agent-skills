@@ -96,13 +96,11 @@ write_file "$project_dir/task.json" <<'EOF'
     "approved_at": ""
   },
   "execution": {
-    "default_mode_after_approval": "continuous-batch",
-    "default_tasks_per_run": 3,
-    "default_max_runs_after_approval": 10
+    "default_mode_after_approval": "continuous"
   },
   "tasks": [
     {
-      "id": 1,
+      "id": "first-task",
       "title": "Define the first implementation task",
       "category": "functional",
       "description": "Replace this placeholder with the first concrete task.",
@@ -139,6 +137,40 @@ write_file "$project_dir/progress.md" <<EOF
 ## Log
 
 - $(date +%F): Initialized Work Loop files.
+
+## Session Template
+
+### What changed
+- 
+
+### Steps
+- 
+
+### Acceptance
+- 
+
+### Verification
+- 
+
+### Issues
+- 
+
+### Next
+- 
+
+## Blocker Template
+
+### Blocker
+- 
+
+### What was completed
+- 
+
+### What is needed
+- 
+
+### Resume instructions
+- 
 EOF
 
 write_file "$project_dir/init.sh" <<'EOF'
@@ -207,11 +239,14 @@ Use the Work Loop files in this repository for long-running tasks.
 - Read `architecture.md`, `task.json`, and `progress.md` before implementation.
 - Do not implement until `task.json` has `"approval": { "status": "approved" }` or the user approves the plan.
 - Create missing Work Loop files proactively when starting a long task.
-- Run `./init.sh` at the start of every coding session; it should install dependencies and start the dev server when applicable.
+- Before approval, only create or revise planning files. Do not run `./init.sh`, install dependencies, start servers, edit application code, or mark tasks as passing.
+- After approval, run `./init.sh` at the start of every coding session; it should install dependencies and start the dev server when applicable.
 - Work on the first task with `"passes": false` whose `depends_on` tasks are already passing.
 - Before new work, regression-check 1-2 already passing tasks.
 - Complete the task's `steps`, satisfy `acceptance`, and pass `verification` before marking it as passed.
-- Update `progress.md` with a concise handoff entry before stopping.
+- Do not rewrite task definitions after approval unless the user asks to revise the plan; normally only `passes` changes.
+- Update `progress.md` with session/blocker details before stopping.
+- Before ending, confirm build/test status, accurate task status, progress entry, one-task commit when available, and no unexplained worktree changes.
 EOF
 
 write_file "$project_dir/CLAUDE.md" <<'EOF'
@@ -222,11 +257,14 @@ Use the Work Loop files in this repository for long-running tasks.
 - Read `architecture.md`, `task.json`, and `progress.md` before implementation.
 - Do not implement until `task.json` has `"approval": { "status": "approved" }` or the user approves the plan.
 - Create missing Work Loop files proactively when starting a long task.
-- Run `./init.sh` at the start of every coding session; it should install dependencies and start the dev server when applicable.
+- Before approval, only create or revise planning files. Do not run `./init.sh`, install dependencies, start servers, edit application code, or mark tasks as passing.
+- After approval, run `./init.sh` at the start of every coding session; it should install dependencies and start the dev server when applicable.
 - Work on the first task with `"passes": false` whose `depends_on` tasks are already passing.
 - Before new work, regression-check 1-2 already passing tasks.
 - Complete the task's `steps`, satisfy `acceptance`, and pass `verification` before marking it as passed.
-- Update `progress.md` with a concise handoff entry before stopping.
+- Do not rewrite task definitions after approval unless the user asks to revise the plan; normally only `passes` changes.
+- Update `progress.md` with session/blocker details before stopping.
+- Before ending, confirm build/test status, accurate task status, progress entry, one-task commit when available, and no unexplained worktree changes.
 EOF
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -12,7 +12,7 @@ Work Loop is a lightweight harness for keeping long coding tasks recoverable. Us
 1. Ground in the repository before planning. Read the README, existing agent instructions, package files, test commands, and relevant source paths.
 2. If Work Loop files are missing, proactively create them in the current repository. Use `scripts/setup-harness.sh` when available; otherwise create the files described in `references/setup.md` directly.
 3. Do not implement project code until `task.json.approval.status` is `approved` or the user clearly approves the plan in the current conversation.
-4. After approval, follow `task.json.execution.default_mode_after_approval`. By default, keep working through the backlog in continuous batches instead of stopping after one task.
+4. After approval, follow `task.json.execution.default_mode_after_approval`. By default, keep working through the backlog in continuous mode instead of stopping after one task.
 5. Before changing code for a task, initialize the environment. Run `./init.sh` whenever it exists. The script is expected to install dependencies, prepare local state, and start the development server if the project has one.
 6. Run a regression check on 1-2 already passing tasks before starting new work.
 7. Pick the first task with `"passes": false` whose `depends_on` tasks are all already passing; implement only that task.
@@ -20,6 +20,38 @@ Work Loop is a lightweight harness for keeping long coding tasks recoverable. Us
 9. Mark the task as passed only after every required check is satisfied.
 10. Add a concise entry to `progress.md` with changes, acceptance results, verification output, and the next task.
 11. Commit one completed task at a time when commits are available in the repo workflow.
+
+Task `id` is required, unique, and stable. Prefer readable string IDs such as `project-setup` or `quiz-flow`; use them in `depends_on`, progress notes, and commit messages.
+
+## Execution Modes
+
+- `checkpoint`: complete one unblocked task, update status and progress, commit if possible, then stop.
+- `continuous`: keep repeating the same task loop until the backlog is complete, a blocker appears, a regression appears, or the configured task budget is reached.
+- `automation-loop`: use `scripts/run-automation.sh` to relaunch fresh sessions and keep disk logs. Use only after at least one manual approved task has completed successfully.
+
+## Approval Gate
+
+Before approval, only planning and harness setup are allowed:
+
+- inspect the repository
+- create or update `architecture.md`, `task.json`, `progress.md`, `AGENTS.md`, and `CLAUDE.md`
+- create `init.sh` and `run-automation.sh` as files, but do not run them
+- ask the user to review the plan and reply with `approve`, `go ahead`, `LGTM`, `批准`, or `同意执行`
+
+Before approval, do not:
+
+- run `./init.sh`
+- install dependencies
+- start development servers
+- edit business/application code
+- execute tasks from `task.json`
+- change `approval.status` to `approved`
+- mark any task `passes: true`
+- run `scripts/run-automation.sh`
+
+After explicit approval, immediately set `task.json.approval.status` to `approved` with `approved_by` and `approved_at` when practical, then enter the execution loop.
+
+After approval, task definitions are frozen during normal execution. Do not rewrite `id`, `title`, `description`, `depends_on`, `steps`, `acceptance`, or `verification` unless the user asks to revise the plan. The normal mutable fields are `passes` and progress notes.
 
 ## Permission Model
 
@@ -39,6 +71,14 @@ A task is not complete because code was written. It is complete only when:
 - related previously-passing behavior still works
 - `progress.md` records the evidence
 - `task.json` is updated from `"passes": false` to `"passes": true`
+
+Before ending an execution session, confirm that:
+
+- modified code builds or the failure is recorded as a blocker
+- `task.json` accurately reflects completed work
+- `progress.md` has a session or blocker entry
+- one task's changes are committed when commits are available
+- the worktree is clean, or any remaining changes are clearly documented
 
 ## Stop Conditions
 
