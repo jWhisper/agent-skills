@@ -10,86 +10,24 @@ Work Loop is a lightweight harness for keeping long coding tasks recoverable. Us
 ## Core Flow
 
 1. Ground in the repository before planning. Read the README, existing agent instructions, package files, test commands, and relevant source paths.
-2. If Work Loop files are missing, proactively create them in the current repository. Use `scripts/setup-harness.sh` when available; otherwise create the files described in `references/initializer.md` directly.
-3. Before approval, follow `references/approval-gate.md` exactly.
-4. When creating or revising `task.json`, follow `references/task-schema.md`.
-5. After approval, follow `references/execution-loop.md`.
-6. When writing handoff notes or blockers, follow `references/progress-handoff.md`.
-7. Use `references/automation.md` only when the user explicitly asks for outer-loop automation.
+2. If Work Loop files are missing, create them. Use `scripts/setup-harness.sh` when available; otherwise follow `references/workflow.md`.
+3. Before approval, follow the approval gate in `references/workflow.md`.
+4. Create or revise `task.json` using `references/task-schema.md`.
+5. After approval, execute tasks using `references/workflow.md`.
+6. Write handoff notes and blockers using `references/handoff.md`.
 
 Task `id` is required, unique, and stable. Use numeric IDs such as `1`, `2`, and `3` so order and dependencies are easy to scan. Use those IDs in `depends_on`, progress notes, and commit messages.
 
-## Execution Modes
+## Non-Negotiables
 
-See `references/execution-loop.md` for `checkpoint`, `continuous`, and `automation-loop`.
-
-## Approval Gate
-
-Before approval, only planning and harness setup are allowed:
-
-- inspect the repository
-- create or update `architecture.md`, `task.json`, `progress.md`, `AGENTS.md`, and `CLAUDE.md`
-- create `init.sh` and `run-automation.sh` as files, but do not run them
-- ask the user to review the plan and reply with `approve`, `go ahead`, `LGTM`, `批准`, or `同意执行`
-
-Before approval, do not:
-
-- run `./init.sh`
-- install dependencies
-- start development servers
-- edit business/application code
-- execute tasks from `task.json`
-- change `approval.status` to `approved`
-- mark any task `passes: true`
-- run `scripts/run-automation.sh`
-
-After explicit approval, immediately set `task.json.approval.status` to `approved` with `approved_by` and `approved_at` when practical, then enter the execution loop.
-
-After approval, task definitions are frozen during normal execution. Do not rewrite `id`, `title`, `description`, `depends_on`, `steps`, `acceptance`, or `verification` unless the user asks to revise the plan. The normal mutable fields are `passes` and progress notes.
-
-## Permission Model
-
-After the user approves the plan, dependency installation and local server startup are part of the normal execution flow through `./init.sh`. Do not ask the user to run setup manually unless credentials, external accounts, paid services, unavailable tools, blocked network access, or elevated system permissions prevent the agent from doing it.
-
-For unattended outer-loop automation, the operator may launch the agent CLI in its non-interactive mode after approval. Interactive sessions should still obey the host tool's permission prompts.
-
-`scripts/run-automation.sh` is optional. Do not run it by default. Use it only when the user explicitly asks for outer-loop automation or when `task.json.execution.default_mode_after_approval` is set to `automation-loop` and the user has approved unattended execution.
-
-## Completion Gate
-
-A task is not complete because code was written. It is complete only when:
-
-- every `steps` item has been exercised or checked
-- every `acceptance` item is satisfied
-- every feasible `verification` command or manual check has passed
-- related previously-passing behavior still works
-- `progress.md` records the evidence
-- `task.json` is updated from `"passes": false` to `"passes": true`
-
-Before ending an execution session, confirm that:
-
-- modified code builds or the failure is recorded as a blocker
-- `task.json` accurately reflects completed work
-- `progress.md` has a session or blocker entry
-- one task's changes are committed when commits are available
-- the worktree is clean, or any remaining changes are clearly documented
-
-## Stop Conditions
-
-Stop and write the blocker in `progress.md` when:
-
-- The plan is not approved.
-- Required credentials, services, or product decisions are missing.
-- `./init.sh` cannot install dependencies, prepare the environment, or start required local services.
-- Verification fails and the fix is outside the current task.
-- The task list no longer matches the repository reality.
-- Continuing would require destructive changes the user did not approve.
+- Before approval: do not run `./init.sh`, install dependencies, start servers, edit application code, run tasks, mark tasks passing, or run automation.
+- After approval: run `./init.sh`, work only on unblocked tasks, satisfy `steps` + `acceptance` + `verification`, then mark `passes: true`.
+- In `continuous` mode, continue to the next unblocked task without asking after each successful task.
+- After approval, task definitions are frozen unless the user asks to revise the plan.
+- End each execution session with `task.json`, `progress.md`, verification evidence, and git state consistent.
 
 ## References
 
-- Read `references/approval-gate.md` before implementation starts.
-- Read `references/initializer.md` when initializing a project for the first time.
-- Read `references/task-schema.md` when creating or revising `task.json`.
-- Read `references/execution-loop.md` when executing approved tasks.
-- Read `references/progress-handoff.md` when updating `progress.md`.
-- Read `references/automation.md` before using `run-automation.sh`.
+- `references/workflow.md`: approval, initialization, execution, automation, and stop conditions.
+- `references/task-schema.md`: `task.json` fields, numeric IDs, dependencies, and freeze rule.
+- `references/handoff.md`: `progress.md` fresh-session, session, and blocker templates.

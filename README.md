@@ -20,12 +20,9 @@ work-loop/
 ├── agents/
 │   └── openai.yaml
 ├── references/
-│   ├── approval-gate.md
-│   ├── automation.md
-│   ├── execution-loop.md
-│   ├── initializer.md
-│   ├── progress-handoff.md
-│   └── task-schema.md
+│   ├── handoff.md
+│   ├── task-schema.md
+│   └── workflow.md
 └── scripts/
     ├── install-skill.sh
     ├── run-automation.sh

@@ -1,4 +1,4 @@
-# Progress Handoff
+# Handoff
 
 Use this reference when writing `progress.md`.
 
@@ -22,9 +22,7 @@ Fresh session startup: read `CLAUDE.md` or `AGENTS.md`, then `architecture.md`, 
 - YYYY-MM-DD: Initialized Work Loop files.
 ```
 
-## Session entry
-
-Append this after a completed task:
+## Completed Task
 
 ```markdown
 ## Session N - Task: task-id
@@ -48,9 +46,7 @@ Append this after a completed task:
 - Next unblocked task, remaining blocker, or completion state.
 ```
 
-## Blocker entry
-
-Append this when work cannot continue:
+## Blocker
 
 ```markdown
 ## Session N - BLOCKED: task-id
@@ -68,9 +64,9 @@ Append this when work cannot continue:
 - What the next session should do after the blocker is resolved.
 ```
 
-## Evidence rules
+## Evidence Rules
 
 - Prefer concrete commands and results.
-- Mention screenshots or browser/manual checks when UI behavior matters.
-- If a check cannot run, record the reason and the closest substitute check.
+- Mention screenshots or manual checks when UI behavior matters.
+- If a check cannot run, record the reason and closest substitute check.
 - Do not mark a task passing if evidence is missing.

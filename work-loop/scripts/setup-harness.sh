@@ -240,7 +240,7 @@ Use the Work Loop files in this repository for long-running tasks.
 
 - Fresh session startup: before doing anything, read `AGENTS.md`, `architecture.md`, `task.json`, and `progress.md`. Do not rely on prior chat context.
 - Read `architecture.md`, `task.json`, and `progress.md` before implementation.
-- If this project has access to the work-loop skill references, use: `approval-gate.md`, `task-schema.md`, `execution-loop.md`, `progress-handoff.md`, and `automation.md`.
+- If this project has access to the work-loop skill references, use: `workflow.md`, `task-schema.md`, and `handoff.md`.
 - Do not implement until `task.json` has `"approval": { "status": "approved" }` or the user approves the plan.
 - Create missing Work Loop files proactively when starting a long task.
 - Before approval, only create or revise planning files. Do not run `./init.sh`, install dependencies, start servers, edit application code, or mark tasks as passing.
@@ -261,7 +261,7 @@ Use the Work Loop files in this repository for long-running tasks.
 
 - Fresh session startup: before doing anything, read `CLAUDE.md`, `architecture.md`, `task.json`, and `progress.md`. Do not rely on prior chat context.
 - Read `architecture.md`, `task.json`, and `progress.md` before implementation.
-- If this project has access to the work-loop skill references, use: `approval-gate.md`, `task-schema.md`, `execution-loop.md`, `progress-handoff.md`, and `automation.md`.
+- If this project has access to the work-loop skill references, use: `workflow.md`, `task-schema.md`, and `handoff.md`.
 - Do not implement until `task.json` has `"approval": { "status": "approved" }` or the user approves the plan.
 - Create missing Work Loop files proactively when starting a long task.
 - Before approval, only create or revise planning files. Do not run `./init.sh`, install dependencies, start servers, edit application code, or mark tasks as passing.
