@@ -53,6 +53,35 @@ bash work-loop/scripts/install-skill.sh --target claude --mode symlink
 
 安装脚本默认不会覆盖已有 `work-loop` skill。如需替换旧安装，添加 `--force`。
 
+## 卸载 Skill
+
+同时从 Codex 和 Claude Code 卸载：
+
+```bash
+bash work-loop/scripts/install-skill.sh --uninstall --target all
+```
+
+只从 Codex 卸载：
+
+```bash
+bash work-loop/scripts/install-skill.sh --uninstall --target codex
+```
+
+只从 Claude Code 卸载：
+
+```bash
+bash work-loop/scripts/install-skill.sh --uninstall --target claude
+```
+
+等价的手动方式是删除对应目录：
+
+```bash
+rm -rf ~/.codex/skills/work-loop
+rm -rf ~/.claude/skills/work-loop
+```
+
+卸载只会移除安装到 agent skill 目录里的 `work-loop`，不会删除这个仓库，也不会删除已经在目标项目里生成的 `architecture.md`、`task.json`、`progress.md`、`init.sh`、`run-automation.sh`、`AGENTS.md` 或 `CLAUDE.md`。
+
 ## 初始化项目
 
 在目标项目中创建 Work Loop 编排文件：

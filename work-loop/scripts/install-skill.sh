@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: install-skill.sh [--force] [--target codex|claude|all] [--mode copy|symlink]
+Usage: install-skill.sh [--force] [--uninstall] [--target codex|claude|all] [--mode copy|symlink]
 
 Install the work-loop skill for Codex and/or Claude Code.
 
@@ -20,11 +20,16 @@ USAGE
 target="all"
 mode="symlink"
 force="no"
+uninstall="no"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --force)
       force="yes"
+      shift
+      ;;
+    --uninstall)
+      uninstall="yes"
       shift
       ;;
     --target)
@@ -93,10 +98,30 @@ install_one() {
   echo "Installed work-loop to $dest ($mode)"
 }
 
+uninstall_one() {
+  local root_dir="$1"
+  local dest="$root_dir/work-loop"
+
+  if [ -e "$dest" ] || [ -L "$dest" ]; then
+    rm -rf "$dest"
+    echo "Uninstalled work-loop from $dest"
+  else
+    echo "No work-loop install found at $dest"
+  fi
+}
+
 if [ "$target" = "codex" ] || [ "$target" = "all" ]; then
-  install_one "$codex_skills_dir"
+  if [ "$uninstall" = "yes" ]; then
+    uninstall_one "$codex_skills_dir"
+  else
+    install_one "$codex_skills_dir"
+  fi
 fi
 
 if [ "$target" = "claude" ] || [ "$target" = "all" ]; then
-  install_one "$claude_skills_dir"
+  if [ "$uninstall" = "yes" ]; then
+    uninstall_one "$claude_skills_dir"
+  else
+    install_one "$claude_skills_dir"
+  fi
 fi
