@@ -1,0 +1,3 @@
+display_name: Work Loop
+short_description: Run long coding work through a planned, verified, resumable task loop.
+default_prompt: Use the work-loop skill to plan this coding task, wait for approval before implementation, then run approved tasks through environment setup, regression checks, acceptance checks, verification, progress handoff, and task-by-task commits.
