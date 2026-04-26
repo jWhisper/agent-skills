@@ -3,9 +3,10 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: install-skill.sh [--force] [--uninstall] [--target codex|claude|all] [--mode copy|symlink]
+Usage: install-skill.sh [--force] [--uninstall] [--target codex|claude|all] [--mode copy|symlink] [--project /path/to/project]
 
 Install the work-loop skill for Codex and/or Claude Code.
+Optionally initialize Work Loop files in a target project with --project.
 
 Defaults:
   --target all
@@ -21,6 +22,7 @@ target="all"
 mode="symlink"
 force="no"
 uninstall="no"
+project_dir=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -38,6 +40,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --mode)
       mode="${2:-}"
+      shift 2
+      ;;
+    --project)
+      project_dir="${2:-}"
       shift 2
       ;;
     -h|--help)
@@ -123,5 +129,17 @@ if [ "$target" = "claude" ] || [ "$target" = "all" ]; then
     uninstall_one "$claude_skills_dir"
   else
     install_one "$claude_skills_dir"
+  fi
+fi
+
+if [ -n "$project_dir" ]; then
+  if [ "$uninstall" = "yes" ]; then
+    echo "--project is ignored when --uninstall is used" >&2
+  else
+    setup_args=()
+    if [ "$force" = "yes" ]; then
+      setup_args+=(--force)
+    fi
+    bash "$script_dir/setup-harness.sh" "${setup_args[@]}" "$project_dir"
   fi
 fi

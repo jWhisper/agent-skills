@@ -1,103 +1,144 @@
 # Workflow
 
-Use this reference for approval, initialization, execution, and automation.
+Use this state machine for every Work Loop session.
 
-## Fresh Session
+## State 1: Auto-Init
 
-At the start of every new interactive or automated session, read:
+1. Locate the project root from the user request, `git rev-parse
+   --show-toplevel`, or `pwd`.
+2. Check for `CLAUDE.md`, `AGENTS.md`, `architecture.md`, `task.json`,
+   `progress.md`, `init.sh`, and `run-automation.sh`.
+3. If any are missing, run:
 
-1. `CLAUDE.md` or `AGENTS.md`
-2. `architecture.md`
-3. `task.json`
-4. `progress.md`
+   ```bash
+   bash <skill-dir>/scripts/setup-harness.sh --dir <project-root>
+   ```
 
-Do not rely on previous chat context. After that, read only the source files relevant to the selected task.
+4. The setup script must skip existing files. Do not overwrite without explicit
+   user request.
+5. Do not write business code during auto-init.
 
-## Before Approval
+## State 2: Planning Gate
 
-Allowed:
+Planning mode is active when:
 
-- inspect the repository
-- create or revise `architecture.md`, `task.json`, `progress.md`, `AGENTS.md`, and `CLAUDE.md`
-- create `init.sh` and `run-automation.sh` as files
-- ask the user to review the plan and reply with `approve`, `go ahead`, `LGTM`, `批准`, or `同意执行`
+- `task.json` is missing, empty, or malformed
+- `task.json.approval.status` is not `approved`
+- `architecture.md` is still a placeholder
+- the user asked to revise the plan
 
-Forbidden:
+Allowed before approval:
 
+- inspect repository files
+- create or refine `CLAUDE.md`, `AGENTS.md`, `architecture.md`, `task.json`,
+  `progress.md`, `init.sh`, and `run-automation.sh`
+- derive a concrete task list from the user's requirement
+- list the task overview for the user
+- ask for approval
+
+Forbidden before approval:
+
+- edit application or business code
 - run `./init.sh`
-- install dependencies
-- start development servers
-- edit business or application code
+- install dependencies or start servers
 - execute tasks from `task.json`
-- change `approval.status` to `approved`
-- mark tasks `passes: true`
-- run `run-automation.sh`
+- mark any task `passes: true`
+- run `./run-automation.sh`
 
-After explicit approval, set `task.json.approval.status` to `approved`, fill `approved_by` and `approved_at` when practical, then begin execution.
+After planning, show a short task overview grouped by dependency/order and ask
+the user to approve. Stop until the user replies with approval text such as
+`approve`, `go ahead`, `LGTM`, `同意`, `执行`, `开始`, or `继续执行`.
 
-## Initialization
+## State 3: Approval
 
-When Work Loop files are missing, create:
+When approval is explicit:
 
-- `architecture.md`: goal, non-goals, repo facts, approach, interfaces, verification strategy
-- `task.json`: task queue following `task-schema.md`
-- `progress.md`: current state plus templates from `handoff.md`
-- `init.sh`: idempotent environment setup, but do not run before approval
-- `AGENTS.md` and `CLAUDE.md`: project instructions with the same approval and execution rules
-- `run-automation.sh`: optional outer-loop script, but do not run before approval
+1. Set `task.json.approval.status` to `approved`.
+2. Fill `approved_by` and `approved_at` when practical.
+3. Append an approval entry to `progress.md`.
+4. Choose the execution mode:
+   - explicit user mode wins
+   - otherwise use `task.json.execution.default_mode_after_approval`
 
-Do not overwrite existing files unless the user asks for replacement.
+If the approval reply is bare approval with no smaller scope, continue directly
+into the default execution mode.
+
+## State 4: Fresh Session Resume
+
+At the start of every new conversation or automated run:
+
+1. Run `pwd`.
+2. Read `CLAUDE.md` or `AGENTS.md`.
+3. Read `architecture.md`.
+4. Read `task.json`.
+5. Read `progress.md`.
+6. Inspect recent git history with `git log --oneline -20` when git exists.
+
+Do not rely on previous chat context. The files are the memory.
+
+## State 5: Task Selection
+
+Select the first task where:
+
+- `passes` is not `true`
+- every numeric ID in `depends_on` already points to a task with `passes: true`
+
+If no incomplete task is unblocked, write a blocker entry to `progress.md` and
+stop. Do not skip dependency order.
+
+Regressions take priority. If a previously passing task fails verification,
+change only that task's `passes` back to `false`, record the regression, and fix
+it before new work.
+
+## State 6: Per-Task Loop
+
+For each selected task:
+
+1. Run `./init.sh`.
+2. Regression-check one or two already passing tasks when any exist.
+3. Implement only the selected task.
+4. Complete every `steps` item.
+5. Satisfy every `acceptance` item.
+6. Run every feasible `verification` command or manual check.
+7. Only then set the selected task's `passes` to `true`.
+8. Append a completed-task entry to `progress.md`.
+9. Commit code, `task.json`, and `progress.md` together when git is available.
+
+Do not start another task until the checkpoint is complete.
 
 ## Execution Modes
 
-- `checkpoint`: complete one unblocked task, update progress, commit when available, then stop.
-- `continuous`: continue to the next unblocked task after each successful task checkpoint. Do not ask whether to continue unless a stop condition appears.
-- `automation-loop`: use `run-automation.sh` to relaunch fresh sessions. Use only after at least one approved task has completed manually and the user approves unattended execution.
+### Checkpoint
 
-## Per-Task Loop
+Complete one unblocked task and stop after its checkpoint. Use this when the
+user asks for one task, one checkpoint, or a careful incremental step.
 
-1. Confirm approval.
-2. Run `./init.sh`.
-3. Regression-check 1-2 tasks already marked `passes: true`.
-4. Select the first unblocked task using `task-schema.md`.
-5. Implement only that task.
-6. Complete every `steps` item.
-7. Satisfy every `acceptance` item.
-8. Run every feasible `verification` check.
-9. Run the mandatory task checkpoint below.
+### Continue
 
-## Mandatory Task Checkpoint
+Repeat the per-task loop until:
 
-After each completed task, do this immediately before starting any other task:
+- all tasks pass
+- the configured task budget is reached
+- a dependency blocker appears
+- verification fails
+- required credentials/tools/services are missing
+- the worktree cannot be left in a clean, understandable state
 
-1. Set only the current task's `passes` to `true` in `task.json`.
-2. Add a completed-task session entry to `progress.md` using `handoff.md`.
-3. Record the exact verification evidence for this task.
-4. Commit this task as one coherent change when commits are available.
-5. Run the clean-state check.
+Do not stop after one task in continue mode.
 
-Do not batch multiple completed tasks before updating `task.json`.
-Do not batch multiple completed tasks before updating `progress.md`.
-Do not combine multiple tasks into one commit unless the user explicitly asks.
-Do not start the next task until this checkpoint is complete.
+### Automation
 
-## Stop Conditions
+Run `./run-automation.sh` only after approval. The script launches fresh agent
+sessions with bounded task budgets and stores logs under `automation-logs/`.
 
-Stop instead of continuing when:
+Stop automation if a run completes zero tasks; that means the harness or task
+plan needs human repair.
 
-- all tasks are complete
-- no incomplete task is unblocked
-- a regression appears
-- a step, acceptance item, or verification check fails
-- required credentials, tools, accounts, or services are missing
-- context is getting too large; write `progress.md`, then ask the user to start a fresh session
+## Clean Stop
 
-## Clean-State Check
+Before ending a session, ensure:
 
-Before ending:
-
-- run build/test or record why it cannot run
-- verify `task.json` accurately reflects completed work
-- verify `progress.md` has the current session or blocker entry
-- commit one task's source changes, task status, and progress update together when possible
-- check `git status`; leave a clean worktree or clearly document remaining changes
+- `task.json` accurately reflects verified work
+- `progress.md` contains the latest completed task or blocker
+- build/test status is recorded
+- git status is clean, or remaining changes are clearly explained

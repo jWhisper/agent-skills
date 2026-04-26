@@ -1,38 +1,40 @@
 # Task Schema
 
-Use this reference when creating or revising `task.json`.
+`task.json` is the source of truth for what remains. Use JSON because it is
+harder to casually rewrite than prose.
 
-## Minimal shape
+## Required Shape
 
 ```json
 {
   "project": "Project name",
-  "description": "Short project goal",
+  "goal": "One paragraph describing the requested outcome",
   "approval": {
     "status": "pending",
-    "approved_by": "",
-    "approved_at": ""
+    "approved_by": null,
+    "approved_at": null
   },
   "execution": {
-    "default_mode_after_approval": "continuous"
+    "default_mode_after_approval": "continue",
+    "tasks_per_run": 50,
+    "max_runs": 8,
+    "delay_seconds": 3
   },
   "tasks": [
     {
       "id": 1,
-      "title": "New chat",
-      "category": "functional",
-      "description": "New chat button creates a fresh conversation",
+      "title": "Short task title",
+      "category": "setup",
+      "description": "Concrete scope for this task",
       "depends_on": [],
       "steps": [
-        "Navigate to main interface",
-        "Click the 'New Chat' button",
-        "Verify a new conversation is created"
+        "Perform a concrete user-visible or technical action"
       ],
       "acceptance": [
-        "All listed steps pass in the running app"
+        "Observable condition that must be true"
       ],
       "verification": [
-        "Run the relevant lint/build/test command"
+        "Command or manual check that proves completion"
       ],
       "passes": false
     }
@@ -40,29 +42,42 @@ Use this reference when creating or revising `task.json`.
 }
 ```
 
-## Field rules
+## Field Rules
 
-- `id`: required, unique, stable numeric identifier. Prefer sequential IDs such as `1`, `2`, and `3`.
-- `title`: short human-readable task name.
-- `category`: use values such as `setup`, `functional`, `regression`, `refactor`, `test`, or `docs`.
-- `description`: concrete scope for this task.
-- `depends_on`: list prerequisite numeric task IDs, for example `[1, 2]`.
-- `steps`: concrete actions or observable checks to perform.
-- `acceptance`: completion criteria that must be true before marking the task passed.
-- `verification`: commands or manual checks that provide evidence.
-- `passes`: only set to `true` after all steps, acceptance, and verification pass.
+- `id`: required numeric ID, unique and stable. Use `1`, `2`, `3`.
+- `title`: short task name.
+- `category`: examples are `setup`, `functional`, `regression`, `test`, `docs`,
+  `refactor`, or `polish`.
+- `description`: what this task changes and why.
+- `depends_on`: array of numeric prerequisite task IDs.
+- `steps`: concrete work or observable checks for the task.
+- `acceptance`: criteria that must be true before completion.
+- `verification`: commands, browser checks, screenshots, or manual checks.
+- `passes`: `false` until verified; `true` only after the full task passes.
 
-Update `passes` one task at a time. Do not leave several completed tasks as `false` and update them in a batch later.
+## Execution Fields
 
-## Freeze rule
+- `default_mode_after_approval`: `checkpoint`, `continue`, or `automation`.
+- `tasks_per_run`: max tasks to complete in one continue/automation run.
+- `max_runs`: max outer-loop sessions for automation mode.
+- `delay_seconds`: pause between automation runs.
 
-Before approval, revise task definitions freely. After approval, do not rewrite `id`, `title`, `description`, `depends_on`, `steps`, `acceptance`, or `verification` during normal execution. If the plan is wrong, pause and ask to revise it. Normal execution should only update `passes` and `progress.md`.
+## Invariants
 
-## Selection rule
+- All new tasks start with `"passes": false`.
+- Task IDs never change after approval.
+- Do not remove tasks after approval.
+- Do not rewrite titles, descriptions, dependencies, steps, acceptance, or
+  verification after approval unless the user explicitly reopens planning.
+- Normal execution only changes approval metadata, `passes`, and handoff notes.
+- If the backlog is wrong, stop and repair the plan before coding more.
 
-Select the first task where:
+## Dependency Selection
 
-- `passes` is `false`
-- every `depends_on` task is already `passes: true`
+Choose the first incomplete task whose dependencies are all passing:
 
-If no incomplete task is unblocked, stop and record the dependency blocker.
+1. Ignore tasks with `"passes": true`.
+2. For each remaining task, inspect `depends_on`.
+3. A task is blocked if any dependency is missing or not passing.
+4. Select the lowest numeric ID among unblocked tasks.
+5. If none are unblocked, record the blocker in `progress.md`.

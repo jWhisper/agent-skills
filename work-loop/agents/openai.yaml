@@ -1,3 +1,3 @@
 display_name: Work Loop
-short_description: Run long coding work through a planned, verified, resumable task loop.
-default_prompt: Use the work-loop skill to plan this coding task, wait for approval before implementation, then run approved tasks through environment setup, regression checks, acceptance checks, verification, progress handoff, and task-by-task commits.
+short_description: Auto-initialize a coding harness, approve a task plan, then execute dependency-aware tasks safely.
+default_prompt: Use the work-loop skill. Auto-check the current project and create missing harness files without overwriting existing files. Populate architecture.md and task.json from my requirement, list the task overview for approval, then wait. After approval, execute tasks by dependency in checkpoint, continue, or automation mode, updating task.json and progress.md after every completed task.

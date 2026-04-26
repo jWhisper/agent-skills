@@ -1,45 +1,83 @@
 # Handoff
 
-Use this reference when writing `progress.md`.
-
-`progress.md` must let a fresh session continue without guessing.
+`progress.md` is the memory for fresh sessions. Write it for an agent that has
+not seen the prior chat.
 
 ## Header
 
 ```markdown
 # Progress
 
-Fresh session startup: read `CLAUDE.md` or `AGENTS.md`, then `architecture.md`, `task.json`, and this file before continuing. Do not rely on prior chat context.
+Fresh session startup:
+1. Read `CLAUDE.md` or `AGENTS.md`
+2. Read `architecture.md`
+3. Read `task.json`
+4. Read this file
+5. Run `./init.sh` only after the plan is approved and execution has begun
 
 ## Current State
 
 - Approval: pending
-- Next task: first task with "passes": false
+- Mode: not started
+- Passing tasks: 0/N
+- Next task: first unblocked task with `passes: false`
 - Last verification: not run
+```
 
-## Log
+## Harness Initialized
 
-- YYYY-MM-DD: Initialized Work Loop files.
+```markdown
+## Session N - Harness Initialized
+
+### What changed
+- Created missing harness files without overwriting existing files.
+
+### Current status
+- No business code has been changed.
+- Planning files are ready to be populated or reviewed.
+
+### Next
+- Complete `architecture.md` and `task.json`, show the task overview, and wait
+  for user approval.
+```
+
+## Plan Approval
+
+```markdown
+## Session N - Plan Approved
+
+### Approval
+- Approved by: user
+- Approved at: YYYY-MM-DDTHH:MM:SSZ
+- Execution mode: checkpoint | continue | automation
+
+### Next
+- Start the selected execution mode.
 ```
 
 ## Completed Task
 
-Write this immediately after each task passes, before starting the next task. Do not batch multiple completed tasks into one progress entry.
+Append this immediately after each task passes. Do not batch several tasks into
+one entry.
 
 ```markdown
-## Session N - Task: task-id
+## Session N - Task 3: Task title
 
 ### What changed
-- Files or areas changed.
+- Files or behavior changed.
+
+### Dependency check
+- Dependencies satisfied: 1, 2
 
 ### Steps
-- [x] Step that was completed.
+- [x] Step and observed result.
 
 ### Acceptance
-- [x] Acceptance result and evidence.
+- [x] Acceptance criterion and evidence.
 
 ### Verification
-- Command, manual check, screenshot, or reason a check was not applicable.
+- `command`: result
+- Manual/browser check: result
 
 ### Issues
 - None, or the issue and how it was resolved.
@@ -48,19 +86,32 @@ Write this immediately after each task passes, before starting the next task. Do
 - Next unblocked task, remaining blocker, or completion state.
 ```
 
+## Regression
+
+```markdown
+## Session N - Regression Found: Task 2
+
+### Regression
+- What failed and how it was detected.
+
+### Action
+- Changed task 2 `passes` back to `false`.
+- Fix this regression before new work.
+```
+
 ## Blocker
 
 ```markdown
-## Session N - BLOCKED: task-id
+## Session N - BLOCKED: Task 4
 
 ### Blocker
 - Exact blocker and where it occurred.
 
 ### What was completed
-- Any safe partial work that remains.
+- Safe partial work, if any.
 
 ### What is needed
-- Specific human action, credential, decision, or environment repair.
+- Human action, credential, decision, tool, or environment repair.
 
 ### Resume instructions
 - What the next session should do after the blocker is resolved.
@@ -68,7 +119,8 @@ Write this immediately after each task passes, before starting the next task. Do
 
 ## Evidence Rules
 
-- Prefer concrete commands and results.
-- Mention screenshots or manual checks when UI behavior matters.
-- If a check cannot run, record the reason and closest substitute check.
-- Do not mark a task passing if evidence is missing.
+- Prefer concrete command output summaries and file references.
+- For UI work, mention browser path, interaction, screenshots when available,
+  and console status.
+- If a check cannot run, record why and what substitute evidence was used.
+- Missing evidence means the task stays `passes: false`.
