@@ -37,53 +37,67 @@ if [ ! -f "$task_file" ]; then
   exit 1
 fi
 
-json_eval() {
-  local expr="$1"
-  if command -v node >/dev/null 2>&1; then
-    TASK_FILE="$task_file" EXPR="$expr" node <<'NODE'
-const fs = require('fs');
-const taskFile = process.env.TASK_FILE;
-const expr = process.env.EXPR;
-const t = JSON.parse(fs.readFileSync(taskFile, 'utf8'));
-const value = Function('t', `return (${expr});`)(t);
-if (value !== undefined && value !== null) console.log(value);
-NODE
-  elif command -v python3 >/dev/null 2>&1; then
-    TASK_FILE="$task_file" EXPR="$expr" python3 <<'PY'
-import json, os
-t = json.load(open(os.environ["TASK_FILE"]))
-expr = os.environ["EXPR"]
-if expr in ("approval", "t.approval && t.approval.status"):
-    v = t.get("approval", {}).get("status")
-elif expr in ("remaining", "(t.tasks||[]).filter(x => x.passes !== true).length"):
-    v = len([x for x in t.get("tasks", []) if x.get("passes") is not True])
-elif expr in ("total", "(t.tasks||[]).length"):
-    v = len(t.get("tasks", []))
-elif expr in ("tasks_per_run", "t.execution && t.execution.tasks_per_run"):
-    v = t.get("execution", {}).get("tasks_per_run")
-elif expr in ("max_runs", "t.execution && t.execution.max_runs"):
-    v = t.get("execution", {}).get("max_runs")
-elif expr in ("delay", "t.execution && t.execution.delay_seconds"):
-    v = t.get("execution", {}).get("delay_seconds")
-else:
-    raise SystemExit(1)
-if v is not None:
-    print(v)
-PY
+has_jq_tasks() {
+  command -v jq >/dev/null 2>&1 && jq -e '.tasks | type == "array"' "$task_file" >/dev/null 2>&1
+}
+
+count_total() {
+  if has_jq_tasks; then
+    jq '.tasks | length' "$task_file"
   else
-    echo "node or python3 is required to inspect $task_file" >&2
-    exit 1
+    grep -c '"passes"' "$task_file" 2>/dev/null || echo "0"
   fi
 }
 
-approval_status="$(json_eval "t.approval && t.approval.status" 2>/dev/null || json_eval approval)"
+count_remaining() {
+  if has_jq_tasks; then
+    jq '[.tasks[] | select(.passes != true)] | length' "$task_file"
+  else
+    grep -Ec '"passes"[[:space:]]*:[[:space:]]*false' "$task_file" 2>/dev/null || echo "0"
+  fi
+}
+
+approval_status() {
+  if has_jq_tasks; then
+    jq -r '.approval.status // empty' "$task_file"
+  else
+    sed -n 's/.*"status"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$task_file" | head -n 1
+  fi
+}
+
+read_number_key() {
+  local key="$1"
+  sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p" "$task_file" | head -n 1
+}
+
+read_execution_number() {
+  local primary="$1"
+  local legacy="$2"
+  local value=""
+
+  if has_jq_tasks; then
+    value="$(jq -r --arg primary "$primary" --arg legacy "$legacy" '.execution[$primary] // .execution[$legacy] // empty' "$task_file")"
+  else
+    value="$(read_number_key "$primary")"
+    if [ -z "$value" ] && [ -n "$legacy" ]; then
+      value="$(read_number_key "$legacy")"
+    fi
+  fi
+
+  case "$value" in
+    ''|*[!0-9]*) return 1 ;;
+    *) printf '%s\n' "$value" ;;
+  esac
+}
+
+approval_status="$(approval_status)"
 if [ "$approval_status" != "approved" ]; then
   echo "$task_file is not approved. Review architecture.md and task.json with the user first." >&2
   exit 1
 fi
 
-total="$(json_eval "(t.tasks||[]).length" 2>/dev/null || json_eval total)"
-remaining="$(json_eval "(t.tasks||[]).filter(x => x.passes !== true).length" 2>/dev/null || json_eval remaining)"
+total="$(count_total)"
+remaining="$(count_remaining)"
 
 if [ "$total" -eq 0 ]; then
   echo "$task_file has no tasks. Populate concrete tasks before automation." >&2
@@ -91,15 +105,15 @@ if [ "$total" -eq 0 ]; then
 fi
 
 if [ -z "$tasks_per_run" ]; then
-  tasks_per_run="$(json_eval "t.execution && t.execution.tasks_per_run" 2>/dev/null || json_eval tasks_per_run || true)"
+  tasks_per_run="$(read_execution_number "tasks_per_run" "default_tasks_per_run" || true)"
   tasks_per_run="${tasks_per_run:-3}"
 fi
 if [ -z "$max_runs" ]; then
-  max_runs="$(json_eval "t.execution && t.execution.max_runs" 2>/dev/null || json_eval max_runs || true)"
+  max_runs="$(read_execution_number "max_runs" "default_max_runs_after_approval" || true)"
   max_runs="${max_runs:-8}"
 fi
 if [ -z "$delay" ]; then
-  delay="$(json_eval "t.execution && t.execution.delay_seconds" 2>/dev/null || json_eval delay || true)"
+  delay="$(read_execution_number "delay_seconds" "default_delay_seconds" || true)"
   delay="${delay:-3}"
 fi
 
@@ -130,7 +144,7 @@ main_log="automation-logs/work-loop-$(date +%Y%m%d_%H%M%S).log"
 
 run_agent() {
   local prompt
-  prompt="Use the repo Work Loop harness. Read CLAUDE.md or AGENTS.md, architecture.md, task.json, and progress.md. Run ./init.sh before each task. Work in continue mode for up to $tasks_per_run unblocked dependency-satisfied tasks. For each task: verify dependencies, implement only that task, run acceptance and verification checks, set passes true only after evidence, append progress.md, and commit one coherent task when possible. Do not launch run-automation.sh from inside this supervised run. Stop if blocked or if no unblocked tasks remain."
+  prompt="Use the repo Work Loop harness task execution workflow, not the initialization workflow. Read CLAUDE.md or AGENTS.md, architecture.md, task.json, and progress.md. Run ./init.sh before each task to check project-specific prerequisites. Work in continue mode for up to $tasks_per_run unblocked dependency-satisfied tasks. For each task: verify dependencies, implement only that task by completing its steps as implementation sub-steps, then run acceptance and verification checks. Complete the mandatory checkpoint before claiming success or moving on: update the exact task in task.json to passes true, append a task-complete entry in progress.md naming that task with verification evidence and counts for passed, failed_or_blocked, remaining, and total, re-read both files to confirm the updates, then commit one coherent task including implementation changes, task.json, and progress.md when possible. Do not commit before task.json and progress.md are updated. Do not launch run-automation.sh from inside this supervised run. Stop if blocked or if no unblocked tasks remain."
 
   case "$agent" in
     codex) codex exec -a never -s workspace-write "$prompt" ;;
@@ -147,7 +161,7 @@ echo "Initial progress: $((total - remaining))/$total passing"
 echo "Log: $main_log"
 
 for run in $(seq 1 "$max_runs"); do
-  before="$(json_eval "(t.tasks||[]).filter(x => x.passes !== true).length" 2>/dev/null || json_eval remaining)"
+  before="$(count_remaining)"
   if [ "$before" -eq 0 ]; then
     echo "All tasks complete." | tee -a "$main_log"
     exit 0
@@ -161,7 +175,7 @@ for run in $(seq 1 "$max_runs"); do
   exit_code=$?
   set -e
 
-  after="$(json_eval "(t.tasks||[]).filter(x => x.passes !== true).length" 2>/dev/null || json_eval remaining)"
+  after="$(count_remaining)"
   completed=$((before - after))
 
   echo "Run $run exit code: $exit_code" | tee -a "$main_log"

@@ -172,23 +172,30 @@ Fresh session startup:
 
 - Approval: pending
 - Mode: not started
-- Passing tasks: 0/0
+- Counts: passed 0, failed_or_blocked 0, remaining 0, total 0
 - Next task: planning required
-- Last verification: not run
 
 ## Log
 
-### Session 0 - Harness Initialized
+### blocker - Task none: planning required
 
-#### What changed
+#### Counts
+- passed: 0
+- failed_or_blocked: 0
+- remaining: 0
+- total: 0
+
+#### Blocker
+- Task list is not populated and plan approval is pending.
+
+#### Partial Work
 - Created missing Work Loop harness files without overwriting existing files.
 
-#### Current status
-- No business code has been changed.
-- `architecture.md` and `task.json` must be populated from the user request.
-
-#### Next
+#### Needed
 - Fill the architecture and task plan, list the task overview for the user, and wait for approval.
+
+#### Resume
+- Populate `architecture.md` and `task.json`; do not edit business code before approval.
 EOF
 }
 
@@ -202,51 +209,85 @@ cd "$project_root"
 
 echo "Work Loop init: $project_root"
 
-run_node_init() {
-  local install_cmd="$1"
-  local dev_cmd="$2"
+require_command() {
+  local name="$1"
+  command -v "$name" >/dev/null 2>&1 || {
+    echo "Missing required command: $name" >&2
+    exit 1
+  }
+  echo "Found command: $name"
+}
 
-  echo "Installing dependencies: $install_cmd"
-  $install_cmd
+require_path() {
+  local path="$1"
+  if [ ! -e "$path" ]; then
+    echo "Missing required path: $path" >&2
+    exit 1
+  fi
+  echo "Found path: $path"
+}
 
-  if node -e "const s=require('./package.json').scripts||{}; process.exit(s.dev ? 0 : 1)" >/dev/null 2>&1; then
-    if [ -f .work-loop-dev.pid ] && kill -0 "$(cat .work-loop-dev.pid)" 2>/dev/null; then
-      echo "Dev server already running with PID $(cat .work-loop-dev.pid)"
-    else
-      echo "Starting dev server: $dev_cmd"
-      nohup $dev_cmd > .work-loop-dev.log 2>&1 &
-      echo $! > .work-loop-dev.pid
-      sleep 3
-      echo "Dev server PID $(cat .work-loop-dev.pid); log: .work-loop-dev.log"
-    fi
+require_port() {
+  local port="$1"
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1 || {
+      echo "Required service is not listening on port $port" >&2
+      exit 1
+    }
+  elif command -v nc >/dev/null 2>&1; then
+    nc -z 127.0.0.1 "$port" >/dev/null 2>&1 || {
+      echo "Required service is not listening on port $port" >&2
+      exit 1
+    }
   else
-    echo "No package.json dev script found."
+    echo "Cannot check port $port because neither lsof nor nc is available." >&2
+    exit 1
+  fi
+  echo "Service listening on port: $port"
+}
+
+check_url() {
+  local url="$1"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsS "$url" >/dev/null || {
+      echo "Required URL is not healthy: $url" >&2
+      exit 1
+    }
+    echo "URL healthy: $url"
+  else
+    echo "Cannot check URL $url because curl is not available." >&2
+    exit 1
   fi
 }
 
+# Customize this file for the project after planning is approved.
+# Keep it idempotent and conservative:
+# - check only commands, files, ports, simulators, databases, or local services
+#   that this project actually needs
+# - do not install dependencies just because a manifest exists
+# - do not start generic dev servers unless this project explicitly requires it
+#
+# Examples:
+#   require_command xcodebuild
+#   require_path MyApp.xcworkspace
+#   require_command node
+#   require_port 3000
+#   check_url http://127.0.0.1:3000/health
+
 if [ -f package.json ]; then
-  if [ -f pnpm-lock.yaml ]; then
-    command -v pnpm >/dev/null 2>&1 || { echo "pnpm is required."; exit 1; }
-    run_node_init "pnpm install" "pnpm run dev"
-  elif [ -f yarn.lock ]; then
-    command -v yarn >/dev/null 2>&1 || { echo "yarn is required."; exit 1; }
-    run_node_init "yarn install" "yarn dev"
-  else
-    command -v npm >/dev/null 2>&1 || { echo "npm is required."; exit 1; }
-    run_node_init "npm install" "npm run dev"
-  fi
-elif [ -f pyproject.toml ]; then
-  echo "Python project detected. Add the project-specific setup and server command to init.sh."
-elif [ -f requirements.txt ]; then
-  echo "Python requirements detected. Add virtualenv setup to init.sh if needed."
-elif [ -f Cargo.toml ]; then
-  command -v cargo >/dev/null 2>&1 || { echo "cargo is required."; exit 1; }
-  cargo fetch
-elif [ -f go.mod ]; then
-  command -v go >/dev/null 2>&1 || { echo "go is required."; exit 1; }
-  go mod download
-else
-  echo "No known dependency manifest detected. Customize init.sh for this project."
+  echo "Detected package.json. Add project-specific Node checks if this repo needs them."
+fi
+if compgen -G "*.xcodeproj" >/dev/null || compgen -G "*.xcworkspace" >/dev/null; then
+  echo "Detected iOS/Xcode project. Add xcodebuild, simulator, workspace, or service checks if needed."
+fi
+if [ -f pyproject.toml ] || [ -f requirements.txt ]; then
+  echo "Detected Python project. Add project-specific Python environment checks if needed."
+fi
+if [ -f Cargo.toml ]; then
+  echo "Detected Rust project. Add project-specific cargo/toolchain checks if needed."
+fi
+if [ -f go.mod ]; then
+  echo "Detected Go project. Add project-specific Go/toolchain checks if needed."
 fi
 
 echo "Work Loop init complete."
@@ -294,53 +335,67 @@ if [ ! -f "$task_file" ]; then
   exit 1
 fi
 
-json_eval() {
-  local expr="$1"
-  if command -v node >/dev/null 2>&1; then
-    TASK_FILE="$task_file" EXPR="$expr" node <<'NODE'
-const fs = require('fs');
-const taskFile = process.env.TASK_FILE;
-const expr = process.env.EXPR;
-const t = JSON.parse(fs.readFileSync(taskFile, 'utf8'));
-const value = Function('t', `return (${expr});`)(t);
-if (value !== undefined && value !== null) console.log(value);
-NODE
-  elif command -v python3 >/dev/null 2>&1; then
-    TASK_FILE="$task_file" EXPR="$expr" python3 <<'PY'
-import json, os
-t = json.load(open(os.environ["TASK_FILE"]))
-expr = os.environ["EXPR"]
-if expr in ("approval", "t.approval && t.approval.status"):
-    v = t.get("approval", {}).get("status")
-elif expr in ("remaining", "(t.tasks||[]).filter(x => x.passes !== true).length"):
-    v = len([x for x in t.get("tasks", []) if x.get("passes") is not True])
-elif expr in ("total", "(t.tasks||[]).length"):
-    v = len(t.get("tasks", []))
-elif expr in ("tasks_per_run", "t.execution && t.execution.tasks_per_run"):
-    v = t.get("execution", {}).get("tasks_per_run")
-elif expr in ("max_runs", "t.execution && t.execution.max_runs"):
-    v = t.get("execution", {}).get("max_runs")
-elif expr in ("delay", "t.execution && t.execution.delay_seconds"):
-    v = t.get("execution", {}).get("delay_seconds")
-else:
-    raise SystemExit(1)
-if v is not None:
-    print(v)
-PY
+has_jq_tasks() {
+  command -v jq >/dev/null 2>&1 && jq -e '.tasks | type == "array"' "$task_file" >/dev/null 2>&1
+}
+
+count_total() {
+  if has_jq_tasks; then
+    jq '.tasks | length' "$task_file"
   else
-    echo "node or python3 is required to inspect $task_file" >&2
-    exit 1
+    grep -c '"passes"' "$task_file" 2>/dev/null || echo "0"
   fi
 }
 
-approval_status="$(json_eval "t.approval && t.approval.status" 2>/dev/null || json_eval approval)"
+count_remaining() {
+  if has_jq_tasks; then
+    jq '[.tasks[] | select(.passes != true)] | length' "$task_file"
+  else
+    grep -Ec '"passes"[[:space:]]*:[[:space:]]*false' "$task_file" 2>/dev/null || echo "0"
+  fi
+}
+
+approval_status() {
+  if has_jq_tasks; then
+    jq -r '.approval.status // empty' "$task_file"
+  else
+    sed -n 's/.*"status"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$task_file" | head -n 1
+  fi
+}
+
+read_number_key() {
+  local key="$1"
+  sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p" "$task_file" | head -n 1
+}
+
+read_execution_number() {
+  local primary="$1"
+  local legacy="$2"
+  local value=""
+
+  if has_jq_tasks; then
+    value="$(jq -r --arg primary "$primary" --arg legacy "$legacy" '.execution[$primary] // .execution[$legacy] // empty' "$task_file")"
+  else
+    value="$(read_number_key "$primary")"
+    if [ -z "$value" ] && [ -n "$legacy" ]; then
+      value="$(read_number_key "$legacy")"
+    fi
+  fi
+
+  case "$value" in
+    ''|*[!0-9]*) return 1 ;;
+    *) printf '%s\n' "$value" ;;
+  esac
+}
+
+approval_status="$(approval_status)"
 if [ "$approval_status" != "approved" ]; then
   echo "$task_file is not approved. Review architecture.md and task.json with the user first." >&2
   exit 1
 fi
 
-total="$(json_eval "(t.tasks||[]).length" 2>/dev/null || json_eval total)"
-remaining="$(json_eval "(t.tasks||[]).filter(x => x.passes !== true).length" 2>/dev/null || json_eval remaining)"
+total="$(count_total)"
+remaining="$(count_remaining)"
 
 if [ "$total" -eq 0 ]; then
   echo "$task_file has no tasks. Populate concrete tasks before automation." >&2
@@ -348,15 +403,15 @@ if [ "$total" -eq 0 ]; then
 fi
 
 if [ -z "$tasks_per_run" ]; then
-  tasks_per_run="$(json_eval "t.execution && t.execution.tasks_per_run" 2>/dev/null || json_eval tasks_per_run || true)"
+  tasks_per_run="$(read_execution_number "tasks_per_run" "default_tasks_per_run" || true)"
   tasks_per_run="${tasks_per_run:-3}"
 fi
 if [ -z "$max_runs" ]; then
-  max_runs="$(json_eval "t.execution && t.execution.max_runs" 2>/dev/null || json_eval max_runs || true)"
+  max_runs="$(read_execution_number "max_runs" "default_max_runs_after_approval" || true)"
   max_runs="${max_runs:-8}"
 fi
 if [ -z "$delay" ]; then
-  delay="$(json_eval "t.execution && t.execution.delay_seconds" 2>/dev/null || json_eval delay || true)"
+  delay="$(read_execution_number "delay_seconds" "default_delay_seconds" || true)"
   delay="${delay:-3}"
 fi
 
@@ -387,7 +442,7 @@ main_log="automation-logs/work-loop-$(date +%Y%m%d_%H%M%S).log"
 
 run_agent() {
   local prompt
-  prompt="Use the repo Work Loop harness. Read CLAUDE.md or AGENTS.md, architecture.md, task.json, and progress.md. Run ./init.sh before each task. Work in continue mode for up to $tasks_per_run unblocked dependency-satisfied tasks. For each task: verify dependencies, implement only that task, run acceptance and verification checks, set passes true only after evidence, append progress.md, and commit one coherent task when possible. Do not launch run-automation.sh from inside this supervised run. Stop if blocked or if no unblocked tasks remain."
+  prompt="Use the repo Work Loop harness task execution workflow, not the initialization workflow. Read CLAUDE.md or AGENTS.md, architecture.md, task.json, and progress.md. Run ./init.sh before each task to check project-specific prerequisites. Work in continue mode for up to $tasks_per_run unblocked dependency-satisfied tasks. For each task: verify dependencies, implement only that task by completing its steps as implementation sub-steps, then run acceptance and verification checks. Complete the mandatory checkpoint before claiming success or moving on: update the exact task in task.json to passes true, append a task-complete entry in progress.md naming that task with verification evidence and counts for passed, failed_or_blocked, remaining, and total, re-read both files to confirm the updates, then commit one coherent task including implementation changes, task.json, and progress.md when possible. Do not commit before task.json and progress.md are updated. Do not launch run-automation.sh from inside this supervised run. Stop if blocked or if no unblocked tasks remain."
 
   case "$agent" in
     codex) codex exec -a never -s workspace-write "$prompt" ;;
@@ -404,7 +459,7 @@ echo "Initial progress: $((total - remaining))/$total passing"
 echo "Log: $main_log"
 
 for run in $(seq 1 "$max_runs"); do
-  before="$(json_eval "(t.tasks||[]).filter(x => x.passes !== true).length" 2>/dev/null || json_eval remaining)"
+  before="$(count_remaining)"
   if [ "$before" -eq 0 ]; then
     echo "All tasks complete." | tee -a "$main_log"
     exit 0
@@ -418,7 +473,7 @@ for run in $(seq 1 "$max_runs"); do
   exit_code=$?
   set -e
 
-  after="$(json_eval "(t.tasks||[]).filter(x => x.passes !== true).length" 2>/dev/null || json_eval remaining)"
+  after="$(count_remaining)"
   completed=$((before - after))
 
   echo "Run $run exit code: $exit_code" | tee -a "$main_log"
@@ -455,7 +510,17 @@ This repository uses a self-looping coding harness. The source of truth is:
 - \`architecture.md\`: design and scope
 - \`task.json\`: dependency-aware task list
 - \`progress.md\`: cross-session handoff
-- \`init.sh\`: idempotent startup script
+- \`init.sh\`: idempotent project-specific prerequisite check
+
+## Workflow Split
+
+There are two separate workflows:
+
+1. **Harness initialization / planning**: create or repair harness files, tailor
+   \`init.sh\`, populate \`architecture.md\` and \`task.json\`, list the task
+   overview, and wait for approval. No product code changes happen here.
+2. **Task execution**: after approval, select one dependency-ready task,
+   implement it, verify it, update \`task.json\` and \`progress.md\`, then commit.
 
 ## Startup
 
@@ -467,34 +532,67 @@ At the start of every new conversation or automated run:
 4. Read \`progress.md\`
 5. Do not rely on prior chat context
 
-## Approval Gate
+## Harness Initialization / Planning
 
 Before \`task.json.approval.status\` is \`approved\`:
 
 - You may inspect the repo and edit harness/planning files
 - You must populate \`architecture.md\` and \`task.json\` from the user's request
+- You may tailor \`init.sh\` as a conservative project-specific prerequisite check
+- Tasks must use \`passes\` as the only completion state; do not add task-level \`status\`
+- Tasks should include \`steps\` as concrete implementation sub-steps
+- Put completion criteria in \`acceptance\` and proof commands/manual checks in \`verification\`
 - You must list the task overview for the user
 - You must not edit business code, run \`./init.sh\`, install dependencies, start servers, run automation, or mark tasks passing
 
 When the user approves, record approval metadata in \`task.json\` and \`progress.md\`.
 
-## Task Selection
+\`init.sh\` is not the task workflow. It should only check this project's
+required commands, files, ports, simulators, services, or health URLs. Do not
+install dependencies or start generic services just because a manifest exists.
+
+## Task Execution Workflow
+
+Use this workflow only after approval.
+
+### Task Selection
 
 Select the lowest numeric task where \`passes\` is not \`true\` and every ID in
 \`depends_on\` already has \`passes: true\`. Never start a task with unfinished
 dependencies.
 
-## Per-Task Loop
+### Per-Task Loop
 
 For each task:
 
 1. Run \`./init.sh\`
-2. Regression-check previously passing work when any exists
-3. Implement only the selected task
-4. Verify every step, acceptance item, and verification item
-5. Set only that task's \`passes\` to \`true\`
-6. Append \`progress.md\`
-7. Commit one coherent task when git is available
+2. Confirm the required tools/services for this project are available
+3. Regression-check previously passing work when any exists
+4. Implement only the selected task
+5. Complete every implementation sub-step in \`steps\`
+6. Verify every acceptance item and verification item
+7. Set only that task's \`passes\` to \`true\`
+8. Append \`progress.md\`
+9. Re-read \`task.json\` and \`progress.md\` to confirm both updates
+10. Commit one coherent task when git is available
+
+## Mandatory Completion Checkpoint
+
+A task is not complete until both of these are true:
+
+- The exact task in \`task.json\` has \`passes: true\`
+- \`progress.md\` has a new entry naming that task and recording verification evidence
+
+After updating both files, re-read them to confirm the checkpoint. Do not report
+success, stop checkpoint mode, or continue to another task until this checkpoint
+is complete. If either file cannot be updated, leave the task as \`passes: false\`,
+write a blocker entry in \`progress.md\`, and stop.
+
+Commit only after the checkpoint is complete. A task commit must include the
+implementation changes, \`task.json\`, and \`progress.md\` together.
+
+\`progress.md\` uses only two entry types: \`task-complete\` and \`blocker\`.
+Every entry must include counts for passed, failed_or_blocked, remaining, and total.
 
 ## Modes
 

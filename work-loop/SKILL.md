@@ -21,11 +21,12 @@ When this skill is used, do these steps in order:
    continue from it.
 4. Read `CLAUDE.md` or `AGENTS.md`, `architecture.md`, `task.json`, and
    `progress.md`.
-5. If the plan is missing, empty, or unapproved, stay in planning mode: write or
-   refine `architecture.md` and `task.json`, then show the task overview to the
-   user and stop for approval.
+5. If the plan is missing, empty, or unapproved, use
+   `references/initializer-workflow.md`: write or refine `architecture.md` and
+   `task.json`, then show the task overview to the user and stop for approval.
 6. Only after the user says approval text such as `approve`, `go ahead`, `同意`,
-   `执行`, `开始`, or `继续执行`, record approval and enter execution mode.
+   `执行`, `开始`, or `继续执行`, record approval and use
+   `references/task-workflow.md` for execution mode.
 
 ## Harness Files
 
@@ -34,9 +35,10 @@ When this skill is used, do these steps in order:
 - `architecture.md`: approved design, scope, assumptions, and verification
   strategy.
 - `task.json`: the single source of truth for concrete tasks.
-- `progress.md`: handoff log for fresh sessions.
-- `init.sh`: idempotent startup script run at every new coding session and
-  before every task.
+- `progress.md`: task progrees details.
+- `init.sh`: idempotent project-specific prerequisite check run at every new
+  coding session and before every task. It should check only required tools,
+  services, ports, simulators, files, or health URLs for this project.
 - `run-automation.sh`: optional supervisor loop that launches fresh agent
   sessions until tasks complete or progress stops.
 
@@ -47,13 +49,27 @@ When this skill is used, do these steps in order:
 - `task.json.tasks[].id` must be unique numeric IDs such as `1`, `2`, `3`.
 - Respect `depends_on`: do not start a task until every dependency has
   `passes: true`.
-- Within `task.json`, normal coding may only change task status fields and
-  approval metadata; task text is frozen after approval.
+- In each task, `steps` are implementation sub-steps. Completion criteria belong
+  in `acceptance`; proof commands or manual checks belong in `verification`.
+- Do not create a task-level `status` field. Task completion state is expressed
+  only by `passes`.
+- Within `task.json`, normal coding may only change `passes` and approval
+  metadata; task text is frozen after approval.
 - Run `./init.sh` at the start of every new coding session and before each task.
-- Mark `passes: true` only after all steps, acceptance, and verification pass.
+  Keep it conservative: do not install dependencies or start generic services
+  merely because a manifest exists.
+- Mark `passes: true` only after all `steps` are completed and all
+  `acceptance`/`verification` items pass.
 - After each completed task, immediately update `task.json`, append
   `progress.md`, and commit one coherent task when git is available.
-- If blocked, record the blocker in `progress.md` and stop honestly.
+- A task is not complete until both files are updated: the exact task in
+  `task.json` has `passes: true`, and `progress.md` has a `task-complete`
+  entry naming that task with verification evidence and task counts. Re-read
+  both files before reporting success or starting another task.
+- Commit only after the task status and progress entry are updated. The task
+  commit must include business changes, `task.json`, and `progress.md` together.
+- If blocked, record a `blocker` entry in `progress.md` with task counts and
+  stop honestly.
 
 ## Execution Modes
 
@@ -68,6 +84,9 @@ mode, use `task.json.execution.default_mode_after_approval`.
 
 ## References
 
-- `references/workflow.md`: full state machine and mode rules.
+- `references/workflow.md`: phase router for initialization vs task execution.
+- `references/initializer-workflow.md`: harness setup, planning, `init.sh`
+  design, and approval gate.
+- `references/task-workflow.md`: per-task selection, verification,
+  `passes`/`progress.md` checkpoint, commit order, and execution modes.
 - `references/task-schema.md`: required task JSON shape and invariants.
-- `references/handoff.md`: progress and blocker templates.

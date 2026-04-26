@@ -27,15 +27,9 @@ harder to casually rewrite than prose.
       "category": "setup",
       "description": "Concrete scope for this task",
       "depends_on": [],
-      "steps": [
-        "Perform a concrete user-visible or technical action"
-      ],
-      "acceptance": [
-        "Observable condition that must be true"
-      ],
-      "verification": [
-        "Command or manual check that proves completion"
-      ],
+      "steps": ["Implement the first concrete sub-step of this task"],
+      "acceptance": ["Observable condition that must be true"],
+      "verification": ["Command or manual check that proves completion"],
       "passes": false
     }
   ]
@@ -50,10 +44,12 @@ harder to casually rewrite than prose.
   `refactor`, or `polish`.
 - `description`: what this task changes and why.
 - `depends_on`: array of numeric prerequisite task IDs.
-- `steps`: concrete work or observable checks for the task.
+- `steps`: implementation sub-steps required to complete the task.
 - `acceptance`: criteria that must be true before completion.
 - `verification`: commands, browser checks, screenshots, or manual checks.
 - `passes`: `false` until verified; `true` only after the full task passes.
+- Do not add `status` to individual tasks. Use `passes` as the only task
+  completion signal.
 
 ## Execution Fields
 
@@ -65,11 +61,13 @@ harder to casually rewrite than prose.
 ## Invariants
 
 - All new tasks start with `"passes": false`.
+- New tasks do not include a task-level `status` field.
+- Every implementation task should include `steps` with concrete sub-steps for
+  completing the task.
 - Task IDs never change after approval.
 - Do not remove tasks after approval.
 - Do not rewrite titles, descriptions, dependencies, steps, acceptance, or
   verification after approval unless the user explicitly reopens planning.
-- Normal execution only changes approval metadata, `passes`, and handoff notes.
 - If the backlog is wrong, stop and repair the plan before coding more.
 
 ## Dependency Selection

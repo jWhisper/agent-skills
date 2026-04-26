@@ -1,7 +1,20 @@
 # Handoff
 
-`progress.md` is the memory for fresh sessions. Write it for an agent that has
-not seen the prior chat.
+`progress.md` is the memory for fresh sessions. Keep it small and append-only.
+
+Use only two entry types:
+
+- `task-complete`
+- `blocker`
+
+Every entry must include task counts so the next session can understand overall
+state without recalculating first:
+
+- `passed`: number of tasks with `passes: true`
+- `failed_or_blocked`: number of tasks known to be failing, regressed, or
+  blocked
+- `remaining`: number of tasks not yet passing
+- `total`: total task count
 
 ## Header
 
@@ -13,107 +26,67 @@ Fresh session startup:
 2. Read `architecture.md`
 3. Read `task.json`
 4. Read this file
-5. Run `./init.sh` only after the plan is approved and execution has begun
 
 ## Current State
 
 - Approval: pending
 - Mode: not started
-- Passing tasks: 0/N
-- Next task: first unblocked task with `passes: false`
-- Last verification: not run
+- Counts: passed 0, failed_or_blocked 0, remaining 0, total 0
+- Next task: planning required
 ```
 
-## Harness Initialized
+## task-complete Entry
+
+Append after a task's implementation, acceptance, and verification pass.
+
+The task is not complete unless this entry exists in `progress.md` and the same
+task has `passes: true` in `task.json`.
 
 ```markdown
-## Session N - Harness Initialized
+## task-complete - Task 3: Task title
 
-### What changed
-- Created missing harness files without overwriting existing files.
+### Counts
+- passed: 3
+- failed_or_blocked: 0
+- remaining: 7
+- total: 10
 
-### Current status
-- No business code has been changed.
-- Planning files are ready to be populated or reviewed.
-
-### Next
-- Complete `architecture.md` and `task.json`, show the task overview, and wait
-  for user approval.
-```
-
-## Plan Approval
-
-```markdown
-## Session N - Plan Approved
-
-### Approval
-- Approved by: user
-- Approved at: YYYY-MM-DDTHH:MM:SSZ
-- Execution mode: checkpoint | continue | automation
-
-### Next
-- Start the selected execution mode.
-```
-
-## Completed Task
-
-Append this immediately after each task passes. Do not batch several tasks into
-one entry.
-
-```markdown
-## Session N - Task 3: Task title
-
-### What changed
+### Completed
+- Implementation sub-steps completed.
 - Files or behavior changed.
 
-### Dependency check
-- Dependencies satisfied: 1, 2
-
-### Steps
-- [x] Step and observed result.
-
-### Acceptance
-- [x] Acceptance criterion and evidence.
-
 ### Verification
-- `command`: result
-- Manual/browser check: result
-
-### Issues
-- None, or the issue and how it was resolved.
+- Acceptance evidence.
+- Verification command/manual check evidence.
 
 ### Next
-- Next unblocked task, remaining blocker, or completion state.
+- Next unblocked task, or completion state.
 ```
 
-## Regression
+## blocker Entry
+
+Append when work cannot continue, including failed verification, missing tools,
+blocked dependencies, credentials, services, or regressions.
 
 ```markdown
-## Session N - Regression Found: Task 2
+## blocker - Task 4: Task title
 
-### Regression
-- What failed and how it was detected.
-
-### Action
-- Changed task 2 `passes` back to `false`.
-- Fix this regression before new work.
-```
-
-## Blocker
-
-```markdown
-## Session N - BLOCKED: Task 4
+### Counts
+- passed: 3
+- failed_or_blocked: 1
+- remaining: 7
+- total: 10
 
 ### Blocker
 - Exact blocker and where it occurred.
 
-### What was completed
+### Partial Work
 - Safe partial work, if any.
 
-### What is needed
+### Needed
 - Human action, credential, decision, tool, or environment repair.
 
-### Resume instructions
+### Resume
 - What the next session should do after the blocker is resolved.
 ```
 
@@ -123,4 +96,5 @@ one entry.
 - For UI work, mention browser path, interaction, screenshots when available,
   and console status.
 - If a check cannot run, record why and what substitute evidence was used.
-- Missing evidence means the task stays `passes: false`.
+- Missing evidence means the task stays `passes: false` and uses a `blocker`
+  entry, not `task-complete`.
