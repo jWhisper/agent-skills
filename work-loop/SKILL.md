@@ -10,24 +10,18 @@ Work Loop is a lightweight harness for keeping long coding tasks recoverable. Us
 ## Core Flow
 
 1. Ground in the repository before planning. Read the README, existing agent instructions, package files, test commands, and relevant source paths.
-2. If Work Loop files are missing, proactively create them in the current repository. Use `scripts/setup-harness.sh` when available; otherwise create the files described in `references/setup.md` directly.
-3. Do not implement project code until `task.json.approval.status` is `approved` or the user clearly approves the plan in the current conversation.
-4. After approval, follow `task.json.execution.default_mode_after_approval`. By default, keep working through the backlog in continuous mode instead of stopping after one task.
-5. Before changing code for a task, initialize the environment. Run `./init.sh` whenever it exists. The script is expected to install dependencies, prepare local state, and start the development server if the project has one.
-6. Run a regression check on 1-2 already passing tasks before starting new work.
-7. Pick the first task with `"passes": false` whose `depends_on` tasks are all already passing; implement only that task.
-8. Run the task's `steps`, `acceptance`, and `verification` checks.
-9. Mark the task as passed only after every required check is satisfied.
-10. Add a concise entry to `progress.md` with changes, acceptance results, verification output, and the next task.
-11. Commit one completed task at a time when commits are available in the repo workflow.
+2. If Work Loop files are missing, proactively create them in the current repository. Use `scripts/setup-harness.sh` when available; otherwise create the files described in `references/initializer.md` directly.
+3. Before approval, follow `references/approval-gate.md` exactly.
+4. When creating or revising `task.json`, follow `references/task-schema.md`.
+5. After approval, follow `references/execution-loop.md`.
+6. When writing handoff notes or blockers, follow `references/progress-handoff.md`.
+7. Use `references/automation.md` only when the user explicitly asks for outer-loop automation.
 
 Task `id` is required, unique, and stable. Use numeric IDs such as `1`, `2`, and `3` so order and dependencies are easy to scan. Use those IDs in `depends_on`, progress notes, and commit messages.
 
 ## Execution Modes
 
-- `checkpoint`: complete one unblocked task, update status and progress, commit if possible, then stop.
-- `continuous`: keep repeating the same task loop until the backlog is complete, a blocker appears, a regression appears, or the configured task budget is reached.
-- `automation-loop`: use `scripts/run-automation.sh` to relaunch fresh sessions and keep disk logs. Use only after at least one manual approved task has completed successfully.
+See `references/execution-loop.md` for `checkpoint`, `continuous`, and `automation-loop`.
 
 ## Approval Gate
 
@@ -93,6 +87,9 @@ Stop and write the blocker in `progress.md` when:
 
 ## References
 
-- Read `references/principles.md` when deciding whether to split work, pause, or repair the harness.
-- Read `references/setup.md` when initializing a project for the first time.
-- Read `references/loop.md` when executing approved tasks.
+- Read `references/approval-gate.md` before implementation starts.
+- Read `references/initializer.md` when initializing a project for the first time.
+- Read `references/task-schema.md` when creating or revising `task.json`.
+- Read `references/execution-loop.md` when executing approved tasks.
+- Read `references/progress-handoff.md` when updating `progress.md`.
+- Read `references/automation.md` before using `run-automation.sh`.

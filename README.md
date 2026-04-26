@@ -20,9 +20,12 @@ work-loop/
 ├── agents/
 │   └── openai.yaml
 ├── references/
-│   ├── principles.md
-│   ├── setup.md
-│   └── loop.md
+│   ├── approval-gate.md
+│   ├── automation.md
+│   ├── execution-loop.md
+│   ├── initializer.md
+│   ├── progress-handoff.md
+│   └── task-schema.md
 └── scripts/
     ├── install-skill.sh
     ├── run-automation.sh
@@ -162,6 +165,19 @@ bash work-loop/scripts/setup-harness.sh --force /path/to/project
 - `continuous`：持续推进任务，直到全部完成、遇到阻塞、发现回归或达到任务预算。
 - `automation-loop`：交给 `run-automation.sh` 启动多轮新会话并写入日志。建议至少手动跑通一个任务后再使用。
 
+`continuous` 模式下，成功完成一个任务后不应询问“是否继续下一个任务”，而是自动选择下一个未阻塞任务，直到出现停止条件。
+
+## 新会话恢复
+
+重开 Claude Code 或 Codex 会话后，agent 应先读这些文件，再继续任务：
+
+1. `CLAUDE.md` 或 `AGENTS.md`
+2. `architecture.md`
+3. `task.json`
+4. `progress.md`
+
+不要依赖之前聊天上下文。上一轮必须把必要信息写进 `progress.md`，新会话从这些文件恢复状态。
+
 ## 批准门
 
 `work-loop` 采用明确的批准门：
@@ -245,7 +261,7 @@ bash work-loop/scripts/setup-harness.sh --force /path/to/project
 - Go 项目：运行 `go mod download`。
 - Python 项目：保留项目专用命令占位，因为 Python 工具链差异较大。
 
-这套逻辑对齐长任务 harness 的习惯：每个新会话先恢复可运行环境，再选择下一个未完成任务。
+这套逻辑服务于长任务工作循环：每个批准后的新会话先恢复可运行环境，再选择下一个未完成任务。
 
 ## 权限与自动化模式
 
