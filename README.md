@@ -162,7 +162,17 @@ bash work-loop/scripts/setup-harness.sh --force /path/to/project
 - `continuous`：持续推进任务，直到全部完成、遇到阻塞、发现回归或达到任务预算。
 - `automation-loop`：交给 `run-automation.sh` 启动多轮新会话并写入日志。建议至少手动跑通一个任务后再使用。
 
-`continuous` 模式下，成功完成一个任务后不应询问“是否继续下一个任务”，而是自动选择下一个未阻塞任务，直到出现停止条件。
+`continuous` 模式下，成功完成一个任务并完成 checkpoint 后，不应询问“是否继续下一个任务”，而是自动选择下一个未阻塞任务，直到出现停止条件。
+
+每个任务完成后必须立刻 checkpoint：
+
+1. 只把当前任务的 `passes` 改成 `true`
+2. 在 `progress.md` 写当前任务的 session 记录
+3. 写清楚当前任务的验证证据
+4. 可提交时提交一个任务
+5. 运行收尾检查
+
+禁止做完多个任务后再统一更新 `task.json`、`progress.md` 或统一提交。
 
 ## 新会话恢复
 

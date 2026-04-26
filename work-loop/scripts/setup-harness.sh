@@ -246,11 +246,12 @@ Use the Work Loop files in this repository for long-running tasks.
 - Before approval, only create or revise planning files. Do not run `./init.sh`, install dependencies, start servers, edit application code, or mark tasks as passing.
 - After approval, run `./init.sh` at the start of every coding session; it should install dependencies and start the dev server when applicable.
 - Work on the first task with `"passes": false` whose `depends_on` tasks are already passing.
-- If `approval.status` is `approved` and `execution.default_mode_after_approval` is `continuous`, do not ask whether to continue after each successful task; continue to the next unblocked task until a stop condition appears.
+- If `approval.status` is `approved` and `execution.default_mode_after_approval` is `continuous`, do not ask whether to continue after each successful task checkpoint; continue to the next unblocked task until a stop condition appears.
 - Before new work, regression-check 1-2 already passing tasks.
 - Complete the task's `steps`, satisfy `acceptance`, and pass `verification` before marking it as passed.
 - Do not rewrite task definitions after approval unless the user asks to revise the plan; normally only `passes` changes.
-- Update `progress.md` with session/blocker details before stopping.
+- After each completed task, immediately update `task.json`, update `progress.md`, record verification evidence, commit one task when possible, and run the clean-state check before starting another task.
+- Do not batch multiple completed tasks into one `task.json` update, one progress entry, or one commit.
 - Before ending, confirm build/test status, accurate task status, progress entry, one-task commit when available, and no unexplained worktree changes.
 EOF
 
@@ -267,11 +268,12 @@ Use the Work Loop files in this repository for long-running tasks.
 - Before approval, only create or revise planning files. Do not run `./init.sh`, install dependencies, start servers, edit application code, or mark tasks as passing.
 - After approval, run `./init.sh` at the start of every coding session; it should install dependencies and start the dev server when applicable.
 - Work on the first task with `"passes": false` whose `depends_on` tasks are already passing.
-- If `approval.status` is `approved` and `execution.default_mode_after_approval` is `continuous`, do not ask whether to continue after each successful task; continue to the next unblocked task until a stop condition appears.
+- If `approval.status` is `approved` and `execution.default_mode_after_approval` is `continuous`, do not ask whether to continue after each successful task checkpoint; continue to the next unblocked task until a stop condition appears.
 - Before new work, regression-check 1-2 already passing tasks.
 - Complete the task's `steps`, satisfy `acceptance`, and pass `verification` before marking it as passed.
 - Do not rewrite task definitions after approval unless the user asks to revise the plan; normally only `passes` changes.
-- Update `progress.md` with session/blocker details before stopping.
+- After each completed task, immediately update `task.json`, update `progress.md`, record verification evidence, commit one task when possible, and run the clean-state check before starting another task.
+- Do not batch multiple completed tasks into one `task.json` update, one progress entry, or one commit.
 - Before ending, confirm build/test status, accurate task status, progress entry, one-task commit when available, and no unexplained worktree changes.
 EOF
 

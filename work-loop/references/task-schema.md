@@ -52,6 +52,8 @@ Use this reference when creating or revising `task.json`.
 - `verification`: commands or manual checks that provide evidence.
 - `passes`: only set to `true` after all steps, acceptance, and verification pass.
 
+Update `passes` one task at a time. Do not leave several completed tasks as `false` and update them in a batch later.
+
 ## Freeze rule
 
 Before approval, revise task definitions freely. After approval, do not rewrite `id`, `title`, `description`, `depends_on`, `steps`, `acceptance`, or `verification` during normal execution. If the plan is wrong, pause and ask to revise it. Normal execution should only update `passes` and `progress.md`.

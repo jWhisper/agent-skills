@@ -22,7 +22,8 @@ Task `id` is required, unique, and stable. Use numeric IDs such as `1`, `2`, and
 
 - Before approval: do not run `./init.sh`, install dependencies, start servers, edit application code, run tasks, mark tasks passing, or run automation.
 - After approval: run `./init.sh`, work only on unblocked tasks, satisfy `steps` + `acceptance` + `verification`, then mark `passes: true`.
-- In `continuous` mode, continue to the next unblocked task without asking after each successful task.
+- In `continuous` mode, continue to the next unblocked task without asking only after the current task checkpoint is complete.
+- After every completed task, immediately update `task.json`, update `progress.md`, record verification evidence, commit one task when possible, and run the clean-state check before starting another task.
 - After approval, task definitions are frozen unless the user asks to revise the plan.
 - End each execution session with `task.json`, `progress.md`, verification evidence, and git state consistent.
 

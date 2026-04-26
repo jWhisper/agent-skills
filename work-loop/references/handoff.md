@@ -24,6 +24,8 @@ Fresh session startup: read `CLAUDE.md` or `AGENTS.md`, then `architecture.md`, 
 
 ## Completed Task
 
+Write this immediately after each task passes, before starting the next task. Do not batch multiple completed tasks into one progress entry.
+
 ```markdown
 ## Session N - Task: task-id
 

@@ -51,7 +51,7 @@ Do not overwrite existing files unless the user asks for replacement.
 ## Execution Modes
 
 - `checkpoint`: complete one unblocked task, update progress, commit when available, then stop.
-- `continuous`: continue to the next unblocked task after each successful task. Do not ask whether to continue unless a stop condition appears.
+- `continuous`: continue to the next unblocked task after each successful task checkpoint. Do not ask whether to continue unless a stop condition appears.
 - `automation-loop`: use `run-automation.sh` to relaunch fresh sessions. Use only after at least one approved task has completed manually and the user approves unattended execution.
 
 ## Per-Task Loop
@@ -64,10 +64,22 @@ Do not overwrite existing files unless the user asks for replacement.
 6. Complete every `steps` item.
 7. Satisfy every `acceptance` item.
 8. Run every feasible `verification` check.
-9. Set `passes` to `true` only when all checks pass.
-10. Add a session entry to `progress.md` using `handoff.md`.
-11. Commit this task as one coherent change when commits are available.
-12. Run the clean-state check.
+9. Run the mandatory task checkpoint below.
+
+## Mandatory Task Checkpoint
+
+After each completed task, do this immediately before starting any other task:
+
+1. Set only the current task's `passes` to `true` in `task.json`.
+2. Add a completed-task session entry to `progress.md` using `handoff.md`.
+3. Record the exact verification evidence for this task.
+4. Commit this task as one coherent change when commits are available.
+5. Run the clean-state check.
+
+Do not batch multiple completed tasks before updating `task.json`.
+Do not batch multiple completed tasks before updating `progress.md`.
+Do not combine multiple tasks into one commit unless the user explicitly asks.
+Do not start the next task until this checkpoint is complete.
 
 ## Stop Conditions
 
