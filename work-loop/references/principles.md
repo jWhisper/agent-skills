@@ -13,7 +13,7 @@ Use this reference when a long task starts to feel vague, too large, or hard to 
 ## Operating rules
 
 - Prefer repository facts over prior conversation memory.
-- Every task must have a unique stable `id`; use that ID for dependencies, progress notes, and commit messages.
+- Every task must have a unique stable numeric `id`; use that ID for dependencies, progress notes, and commit messages.
 - Keep tasks dependency-ordered and small. When order matters, encode it with `depends_on` instead of relying only on list position.
 - Use `checkpoint`, `continuous`, or `automation-loop` explicitly when the user's prompt changes how much work to do.
 - Treat `task.json` as the shared source of current work state.

@@ -100,7 +100,7 @@ write_file "$project_dir/task.json" <<'EOF'
   },
   "tasks": [
     {
-      "id": "first-task",
+      "id": 1,
       "title": "Define the first implementation task",
       "category": "functional",
       "description": "Replace this placeholder with the first concrete task.",

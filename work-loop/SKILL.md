@@ -21,7 +21,7 @@ Work Loop is a lightweight harness for keeping long coding tasks recoverable. Us
 10. Add a concise entry to `progress.md` with changes, acceptance results, verification output, and the next task.
 11. Commit one completed task at a time when commits are available in the repo workflow.
 
-Task `id` is required, unique, and stable. Prefer readable string IDs such as `project-setup` or `quiz-flow`; use them in `depends_on`, progress notes, and commit messages.
+Task `id` is required, unique, and stable. Use numeric IDs such as `1`, `2`, and `3` so order and dependencies are easy to scan. Use those IDs in `depends_on`, progress notes, and commit messages.
 
 ## Execution Modes
 

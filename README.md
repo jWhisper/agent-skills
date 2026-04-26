@@ -124,7 +124,7 @@ bash work-loop/scripts/setup-harness.sh --force /path/to/project
   },
   "tasks": [
     {
-      "id": "new-chat",
+      "id": 1,
       "title": "New chat",
       "category": "functional",
       "description": "New chat button creates a fresh conversation",
@@ -150,7 +150,7 @@ bash work-loop/scripts/setup-harness.sh --force /path/to/project
 }
 ```
 
-`approval.status` 为 `pending` 时，只规划不实现。用户批准后再按 `execution.default_mode_after_approval` 推进任务。每个任务必须有唯一稳定的 `id`，推荐使用 `project-setup`、`timer-setup` 这种可读字符串，方便表达顺序、依赖、进度日志和提交信息。每个任务通过 `depends_on` 声明依赖关系，通过 `steps` 描述操作步骤，通过 `acceptance` 定义完成标准，通过 `verification` 定义必须执行的检查。
+`approval.status` 为 `pending` 时，只规划不实现。用户批准后再按 `execution.default_mode_after_approval` 推进任务。每个任务必须有唯一稳定的数字 `id`，推荐使用 `1`、`2`、`3` 这种顺序编号，方便表达第几步、依赖关系、进度日志和提交信息。每个任务通过 `depends_on` 声明依赖关系，通过 `steps` 描述操作步骤，通过 `acceptance` 定义完成标准，通过 `verification` 定义必须执行的检查。
 
 任务选择规则是：只选择第一个 `passes: false` 且所有 `depends_on` 任务都已经 `passes: true` 的任务。这样 API、数据模型、认证、UI 等有依赖的任务不会乱序执行。
 
