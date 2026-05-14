@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{FEATURE_NAME}} - Code Map</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="hero">
+    <p class="eyebrow">Gold Miner documentation</p>
+    <h1>{{FEATURE_NAME}}</h1>
+    <p class="summary">{{FEATURE_SUMMARY}}</p>
+  </header>
+
+  <main class="layout">
+    <section class="panel">
+      <h2>Reading Order</h2>
+      <ol class="nav-list">
+        {{PAGE_LINKS}}
+      </ol>
+    </section>
+
+    <section class="panel">
+      <h2>Feature Snapshot</h2>
+      <dl class="facts">
+        <dt>Primary entrypoint</dt>
+        <dd>{{PRIMARY_ENTRYPOINT}}</dd>
+        <dt>Main data path</dt>
+        <dd>{{MAIN_DATA_PATH}}</dd>
+        <dt>Output</dt>
+        <dd>{{OUTPUT_SUMMARY}}</dd>
+        <dt>Best first breakpoint</dt>
+        <dd>{{FIRST_BREAKPOINT}}</dd>
+      </dl>
+    </section>
+
+    <section class="panel full">
+      <h2>Source Map</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>File</th>
+            <th>Lines</th>
+            <th>Symbol</th>
+            <th>Why it matters</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{SOURCE_ROWS}}
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>
