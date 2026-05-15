@@ -141,7 +141,7 @@ Follow the workflow in CLAUDE.md for one supervised continuous-batch session.
 - Finish up to $TASKS_PER_RUN tasks in this session
 - Run init.sh before coding and re-check regressions before each new task
 - Keep one task per commit, but do not stop after the first completed task
-- After each completed task, update the task file and progress log, commit, then continue
+- After each completed task, update the task file and progress log, then make exactly one git commit that includes the implementation changes, task file, and progress log
 - Stop early if blocked, if regressions fail, or if the backlog is empty
 PROMPT
 
@@ -158,7 +158,7 @@ PROMPT
 
 run_codex() {
   codex exec -a never -s workspace-write \
-    "Follow AGENTS.md for one supervised continuous-batch session. Read $ARCHITECTURE_FILE and $TASK_FILE, do not launch ./run-automation.sh again because this session is already supervised, finish up to $TASKS_PER_RUN verified tasks, keep one task per commit, update the task file and progress log after each task, stop early if blocked or if regressions fail or if the backlog is empty."
+    "Follow AGENTS.md for one supervised continuous-batch session. Read $ARCHITECTURE_FILE and $TASK_FILE, do not launch ./run-automation.sh again because this session is already supervised, finish up to $TASKS_PER_RUN verified tasks, keep one task per commit, after each task update the task file and progress log then make exactly one git commit that includes the implementation changes plus both tracking files, stop early if blocked or if regressions fail or if the backlog is empty."
 }
 
 # --- main loop ---

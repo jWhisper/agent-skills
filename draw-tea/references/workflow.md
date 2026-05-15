@@ -62,4 +62,7 @@ Allowed preparation files:
 - `init.sh`
 - `run-automation.sh`
 
-After writing the files, show the方案 and stop.
+After writing `task.json` and the rest of the preparation files, output the
+需求方案 to the user and stop. The方案 must include the requirement summary,
+key architecture decisions, task list, assumptions, open questions, and next
+approval step. Do not continue into implementation in the same turn.

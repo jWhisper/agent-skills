@@ -22,6 +22,12 @@ Required points:
     `"passes": true`.
   - In `progress.md`, append a dated entry with task id, task title, changes,
     verification evidence, and remaining task counts.
+- After `task.json` and `progress.md` are updated for a completed task, make
+  exactly one git commit for that task. The commit must include the
+  implementation changes, `task.json`, and `progress.md` together.
+- Do not start the next task or report the task complete until the commit
+  succeeds. If git is unavailable or the commit fails, record the blocker in
+  `progress.md` and stop honestly.
 - If blocked, append a blocker entry to `progress.md` and do not pretend the
   task is complete.
 - Do not reorder or rewrite approved tasks unless the user asks to re-plan.
