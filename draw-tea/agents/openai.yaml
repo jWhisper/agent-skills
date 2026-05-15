@@ -1,0 +1,4 @@
+interface:
+  display_name: "Draw Tea"
+  short_description: "Turn requirements into pre-coding planning artifacts only."
+  default_prompt: "Use $draw-tea to analyze a requirement, discuss disagreements before deciding, create CLAUDE.md, AGENTS.md, architecture.md, task.json, progress.md, init.sh, and run-automation.sh in the project, then show the prepared plan without writing implementation code."

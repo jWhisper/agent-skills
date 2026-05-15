@@ -1,4 +1,4 @@
 interface:
   display_name: "Gold Miner"
   short_description: "Generate beginner-friendly code archaeology docs."
-  default_prompt: "Use $gold-miner to trace an unfamiliar feature from code and generate beginner-friendly static HTML documentation."
+  default_prompt: "Use $gold-miner to guide a beginner layer by layer through an unfamiliar feature's code and generate beginner-friendly static HTML documentation."
